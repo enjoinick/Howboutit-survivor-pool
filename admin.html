@@ -107,6 +107,12 @@
         teamLabel: '',
         lastYearRank: 11
       });
+      // Gist persistence settings
+      const [showSettings, setShowSettings] = useState(false);
+      const [gistId, setGistId] = useState(localStorage.getItem('gistId') || '');
+      const [gistToken, setGistToken] = useState(localStorage.getItem('gistToken') || '');
+      const [isSaving, setIsSaving] = useState(false);
+      const [dirty, setDirty] = useState(false);
       
       // Check password on load
       useEffect(() => {
@@ -152,21 +158,44 @@
         setTimeout(() => setNotification(null), 3000);
       };
       
-      const loadData = () => {
-        fetch('data.json')
-          .then(response => response.json())
-          .then(data => {
-            console.log('Data loaded:', data);
-            setManagers(data.managers);
+      const loadData = async () => {
+        // Try Gist first if configured; otherwise fall back to local data.json
+        if (gistId) {
+          try {
+            const metaRes = await fetch(`https://api.github.com/gists/${gistId}`);
+            if (!metaRes.ok) throw new Error(`Gist metadata fetch failed: ${metaRes.status}`);
+            const meta = await metaRes.json();
+            const dataFile = meta.files && (meta.files['data.json'] || meta.files['data.JSON']);
+            if (!dataFile || !dataFile.raw_url) throw new Error('data.json not found in Gist');
+            const res = await fetch(`${dataFile.raw_url}?t=${Date.now()}`);
+            if (!res.ok) throw new Error(`Gist raw fetch failed: ${res.status}`);
+            const data = await res.json();
+            setManagers(data.managers || []);
             setJsonData(JSON.stringify(data, null, 2));
-          })
-          .catch(error => {
-            console.error('Error loading data:', error);
-            showNotification('Error loading data', 'error');
-          });
+            setDirty(false);
+            return;
+          } catch (err) {
+            console.error('Gist load failed, falling back to local data.json:', err);
+          }
+        }
+        try {
+          const res = await fetch(`data.json?t=${Date.now()}`);
+          const data = await res.json();
+          setManagers(data.managers || []);
+          setJsonData(JSON.stringify(data, null, 2));
+          setDirty(false);
+        } catch (error) {
+          console.error('Error loading local data.json:', error);
+          showNotification('Error loading data', 'error');
+        }
       };
       
       const handlePickChange = (managerIndex, weekIndex, value) => {
+        // Prevent duplicate team picks for the same manager
+        if (value && managers[managerIndex].picks.some((p, idx) => idx !== weekIndex && p.team === value)) {
+          showNotification('This team is already used in another week for this manager', 'error');
+          return;
+        }
         const updatedManagers = [...managers];
         updatedManagers[managerIndex].picks[weekIndex] = {
           ...updatedManagers[managerIndex].picks[weekIndex],
@@ -176,11 +205,6 @@
         };
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
-        
-        // Force a refresh to ensure data is updated
-        setTimeout(() => {
-          loadData();
-        }, 100);
       };
       
       const handleResultChange = (managerIndex, weekIndex, value) => {
@@ -203,11 +227,6 @@
         
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
-        
-        // Force a refresh to ensure data is updated
-        setTimeout(() => {
-          loadData();
-        }, 100);
       };
       
       const handleManagerInfoChange = (managerIndex, field, value) => {
@@ -215,11 +234,6 @@
         updatedManagers[managerIndex][field] = field === 'lastYearRank' ? parseInt(value) : value;
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
-        
-        // Force a refresh to ensure data is updated
-        setTimeout(() => {
-          loadData();
-        }, 100);
       };
       
       const handleMarginChange = (managerIndex, weekIndex, margin) => {
@@ -242,11 +256,6 @@
         
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
-        
-        // Force a refresh to ensure data is updated
-        setTimeout(() => {
-          loadData();
-        }, 100);
       };
       
       const updateJsonData = (updatedManagers) => {
@@ -255,32 +264,50 @@
           lastUpdated: new Date().toISOString()
         };
         setJsonData(JSON.stringify(data, null, 2));
-        
-        // Auto-save to data.json
-        saveDataToFile(data);
+        setDirty(true);
       };
-      
-      const saveDataToFile = (data) => {
-        fetch('/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            filename: 'data.json',
-            content: JSON.stringify(data, null, 2)
-          })
-        })
-        .then(response => response.json())
-        .then(result => {
-          console.log('Data saved successfully:', result);
-          showNotification('Data auto-saved', 'success');
-        })
-        .catch(error => {
-          console.error('Error auto-saving data:', error);
-          // If direct save fails, show notification that manual download is needed
-          showNotification('Changes made. Download data.json to save permanently.', 'error');
-        });
+
+      // Save current jsonData to configured Gist
+      const saveToGist = async () => {
+        if (!gistId || !gistToken) {
+          showNotification('Configure Gist ID and Token in Settings first', 'error');
+          return;
+        }
+        try {
+          setIsSaving(true);
+          const payload = {
+            files: {
+              'data.json': { content: jsonData }
+            }
+          };
+          const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `token ${gistToken}`
+            },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) {
+            const t = await res.text();
+            throw new Error(`Gist save failed: ${res.status} ${t}`);
+          }
+          setDirty(false);
+          showNotification('Saved to Gist successfully', 'success');
+        } catch (err) {
+          console.error(err);
+          showNotification('Failed to save to Gist. Check Settings.', 'error');
+        } finally {
+          setIsSaving(false);
+        }
+      };
+
+      // Persist Settings to localStorage
+      const saveSettings = () => {
+        localStorage.setItem('gistId', gistId.trim());
+        localStorage.setItem('gistToken', gistToken.trim());
+        setShowSettings(false);
+        showNotification('Settings saved locally', 'success');
       };
       
       const resetElimination = (managerIndex) => {
@@ -296,11 +323,6 @@
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
         showNotification('Manager reset successfully', 'success');
-        
-        // Force a refresh to ensure data is updated
-        setTimeout(() => {
-          loadData();
-        }, 100);
       };
       
       const resetPick = (managerIndex, weekIndex) => {
@@ -330,11 +352,6 @@
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
         showNotification('Weekly pick reset successfully', 'success');
-        
-        // Force a refresh to ensure data is updated
-        setTimeout(() => {
-          loadData();
-        }, 100);
       };
       
       const addManager = () => {
@@ -361,11 +378,6 @@
         setNewManager({ name: '', teamLabel: '', lastYearRank: 11 });
         setShowAddManager(false);
         showNotification('Manager added successfully', 'success');
-        
-        // Force a refresh to ensure data is updated
-        setTimeout(() => {
-          loadData();
-        }, 100);
       };
       
       const removeManager = (managerIndex) => {
@@ -375,11 +387,6 @@
           setManagers(updatedManagers);
           updateJsonData(updatedManagers);
           showNotification('Manager removed successfully', 'success');
-          
-          // Force a refresh to ensure data is updated
-          setTimeout(() => {
-            loadData();
-          }, 100);
         }
       };
       
@@ -453,6 +460,23 @@
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <button
+                    onClick={() => setShowSettings(true)}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2"
+                    title="Configure GitHub Gist persistence"
+                  >
+                    <i className="fas fa-gear"></i>
+                    Settings
+                  </button>
+                  <button
+                    onClick={saveToGist}
+                    disabled={!dirty || isSaving}
+                    className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${(!dirty || isSaving) ? 'bg-green-800 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700'}`}
+                    title="Save current changes to Gist"
+                  >
+                    <i className={`fas ${isSaving ? 'fa-spinner fa-spin' : 'fa-cloud-upload-alt'}`}></i>
+                    {isSaving ? 'Saving…' : 'Save to Gist'}
+                  </button>
+                  <button
                     onClick={() => setShowChangePassword(true)}
                     className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg transition-colors flex items-center gap-2"
                   >
@@ -483,6 +507,12 @@
                   </button>
                 </div>
               </div>
+              {dirty && (
+                <div className="text-sm text-yellow-300 mt-2 flex items-center gap-2">
+                  <i className="fas fa-circle-exclamation"></i>
+                  You have unsaved changes. Click "Save to Gist".
+                </div>
+              )}
             </header>
             
             {/* JSON Editor */}
@@ -571,7 +601,14 @@
                           >
                             <option value="">Select a team</option>
                             {nflTeams.map(team => (
-                              <option key={team} value={team}>{team}</option>
+                              <option
+                                key={team}
+                                value={team}
+                                disabled={manager.picks.some((p, idx) => idx !== weekIndex && p.team === team)}
+                              >
+                                {team}
+                                {manager.picks.some((p, idx) => idx !== weekIndex && p.team === team) ? ' (used)' : ''}
+                              </option>
                             ))}
                           </select>
                         </div>
@@ -653,6 +690,45 @@
             </div>
           </div>
           
+          {/* Settings Modal */}
+          {showSettings && (
+            <div className="modal" role="dialog" aria-modal="true" aria-label="Gist Settings">
+              <div className="glass rounded-2xl p-6 max-w-md w-full">
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <i className="fas fa-gear"></i> Data Persistence Settings
+                </h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">GitHub Gist ID</label>
+                    <input
+                      type="text"
+                      value={gistId}
+                      onChange={(e) => setGistId(e.target.value)}
+                      className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="e.g. a1b2c3d4e5f6g7h8i9j0"
+                    />
+                    <p className="text-xs text-purple-200 mt-1">Create a Gist with a file named data.json. Paste its ID here.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">GitHub Personal Access Token (gist scope)</label>
+                    <input
+                      type="password"
+                      value={gistToken}
+                      onChange={(e) => setGistToken(e.target.value)}
+                      className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="token stored locally"
+                    />
+                    <p className="text-xs text-purple-200 mt-1">Stored only in your browser (localStorage). Required to save.</p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button onClick={() => setShowSettings(false)} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors">Cancel</button>
+                  <button onClick={saveSettings} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors">Save Settings</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Change Password Modal */}
           {showChangePassword && (
             <div className="modal">

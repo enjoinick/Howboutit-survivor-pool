@@ -184,23 +184,54 @@
       const [lastUpdated, setLastUpdated] = useState('');
       const [refreshing, setRefreshing] = useState(false);
       
-      // Function to load data with cache-busting
-      const loadData = () => {
+      // Function to load data with cache-busting (prefers Gist via config.json)
+      const loadData = async () => {
         setRefreshing(true);
         const timestamp = new Date().getTime();
-        fetch(`data.json?t=${timestamp}`)
-          .then(response => response.json())
-          .then(data => {
-            setManagers(data.managers);
-            setLastUpdated(data.lastUpdated);
+        // Try to read gistId from config.json
+        let gistId = '';
+        try {
+          const cfgRes = await fetch(`config.json?t=${timestamp}`);
+          if (cfgRes.ok) {
+            const cfg = await cfgRes.json();
+            if (cfg && cfg.gistId) gistId = cfg.gistId.trim();
+          }
+        } catch (e) {
+          // no config found; will fall back below
+        }
+        // If gistId configured, try Gist first
+        if (gistId) {
+          try {
+            const metaRes = await fetch(`https://api.github.com/gists/${gistId}`);
+            if (!metaRes.ok) throw new Error(`Gist metadata fetch failed: ${metaRes.status}`);
+            const meta = await metaRes.json();
+            const dataFile = meta.files && (meta.files['data.json'] || meta.files['data.JSON']);
+            if (!dataFile || !dataFile.raw_url) throw new Error('data.json not found in Gist');
+            const res = await fetch(`${dataFile.raw_url}?t=${timestamp}`);
+            if (!res.ok) throw new Error(`Gist raw fetch failed: ${res.status}`);
+            const data = await res.json();
+            setManagers(data.managers || []);
+            setLastUpdated(data.lastUpdated || '');
             setLoading(false);
             setRefreshing(false);
-          })
-          .catch(error => {
-            console.error('Error loading data:', error);
-            setLoading(false);
-            setRefreshing(false);
-          });
+            return;
+          } catch (err) {
+            console.error('Gist load failed, falling back to local data.json:', err);
+          }
+        }
+        // Fallback to local data.json
+        try {
+          const response = await fetch(`data.json?t=${timestamp}`);
+          const data = await response.json();
+          setManagers(data.managers || []);
+          setLastUpdated(data.lastUpdated || '');
+          setLoading(false);
+          setRefreshing(false);
+        } catch (error) {
+          console.error('Error loading data:', error);
+          setLoading(false);
+          setRefreshing(false);
+        }
       };
       
       // Initial data load
@@ -268,36 +299,28 @@
                     // Determine if the team won or lost
                     const result = margin > 0 ? 'W' : 'L';
                     
-                    // Only update if the game is completed and result is different
-                    if (status === 'post' && (pick.result !== result || !pick.manualResult)) {
-                      newPicks[weekIndex] = {
-                        ...pick,
-                        result: result,
-                        margin: margin,
-                        manualResult: false, // Mark as automatic result
-                        lastUpdated: new Date().toISOString()
-                      };
-                      hasUpdatedPick = true;
-                      
-                      // Add to total margin of victory
-                      if (result === 'W') {
-                        newMarginOfVictory += margin;
+                    // Only auto-update if the game is completed and this pick is not a manual override
+                    if (status === 'post' && !pick.manualResult) {
+                      if (pick.result !== result || pick.margin !== margin) {
+                        newPicks[weekIndex] = {
+                          ...pick,
+                          result: result,
+                          margin: margin,
+                          manualResult: false, // Mark as automatic result
+                          lastUpdated: new Date().toISOString()
+                        };
+                        hasUpdatedPick = true;
                       }
-                    } else if (status === 'post' && pick.result === result && pick.manualResult) {
-                      // Manual result exists, use the manual margin if available
-                      if (pick.margin !== undefined) {
-                        newMarginOfVictory += pick.margin;
-                      }
-                    } else if (pick.result === 'W' && !pick.manualResult) {
-                      // Existing win, add the margin
-                      newMarginOfVictory += margin;
                     }
                   }
                 }
               }
             });
             
-            // Update manager if we found valid scores
+            // Recompute total margin strictly from stored pick.margin values where result === 'W'
+            newMarginOfVictory = newPicks.reduce((sum, p) => sum + ((p.result === 'W' && typeof p.margin === 'number') ? p.margin : 0), 0);
+
+            // Update manager if we found valid scores or margin changed
             if (hasUpdatedPick || newMarginOfVictory !== manager.marginOfVictory) {
               return {
                 ...manager,
@@ -462,7 +485,8 @@
               </div>
               <button
                 onClick={loadData}
-                disabled={refreshing}
+                disabled={refreshing || loading}
+                aria-label="Refresh data"
                 className={`p-2 rounded-full ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
                 title="Refresh data"
               >
@@ -471,6 +495,10 @@
             </div>
             <div className="mt-4 text-sm text-purple-200">
               Last updated: {new Date(lastUpdated).toLocaleString()}
+            </div>
+            <div className="mt-1 text-xs text-purple-200">
+              Times shown are Eastern Time. Tiebreaker: total margin of victory across wins only.
+              <span className="ml-1" aria-label="Manual override indicator">Manual overrides are marked with 📝.</span>
             </div>
           </header>
 
