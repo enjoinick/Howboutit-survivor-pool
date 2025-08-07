@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - NFL Survivor Pool</title>
+  <!-- Tailwind CSS via Play CDN for rapid styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React and ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Babel Standalone enables JSX in the browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      background-image: linear-gradient(to top right, #3730a3, #6d28d9);
+      font-family: 'Inter', sans-serif;
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body class="min-h-screen text-white font-sans">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    
+    // Complete list of NFL teams
+    const nflTeams = [
+      'Arizona Cardinals','Atlanta Falcons','Baltimore Ravens','Buffalo Bills','Carolina Panthers','Chicago Bears',
+      'Cincinnati Bengals','Cleveland Browns','Dallas Cowboys','Denver Broncos','Detroit Lions','Green Bay Packers',
+      'Houston Texans','Indianapolis Colts','Jacksonville Jaguars','Kansas City Chiefs','Las Vegas Raiders',
+      'Los Angeles Chargers','Los Angeles Rams','Miami Dolphins','Minnesota Vikings','New England Patriots',
+      'New Orleans Saints','New York Giants','New York Jets','Philadelphia Eagles','Pittsburgh Steelers',
+      'San Francisco 49ers','Seattle Seahawks','Tampa Bay Buccaneers','Tennessee Titans','Washington Commanders'
+    ];
+
+    function AdminPanel() {
+      const [authenticated, setAuthenticated] = useState(false);
+      const [managers, setManagers] = useState([]);
+      const [jsonData, setJsonData] = useState('');
+      const [showJson, setShowJson] = useState(false);
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      
+      // Check password on load
+      useEffect(() => {
+        const storedAuth = localStorage.getItem('adminAuthenticated');
+        if (storedAuth === 'true') {
+          setAuthenticated(true);
+          loadData();
+        }
+      }, []);
+      
+      const handleLogin = () => {
+        // In a real app, you'd use a more secure method
+        if (password === 'survivor2025') {
+          setAuthenticated(true);
+          localStorage.setItem('adminAuthenticated', 'true');
+          setError('');
+          loadData();
+        } else {
+          setError('Incorrect password');
+        }
+      };
+      
+      const loadData = () => {
+        fetch('data.json')
+          .then(response => response.json())
+          .then(data => {
+            setManagers(data.managers);
+            setJsonData(JSON.stringify(data, null, 2));
+          })
+          .catch(error => {
+            console.error('Error loading data:', error);
+          });
+      };
+      
+      const handlePickChange = (managerIndex, weekIndex, value) => {
+        const updatedManagers = [...managers];
+        updatedManagers[managerIndex].picks[weekIndex].team = value;
+        setManagers(updatedManagers);
+        updateJsonData(updatedManagers);
+      };
+      
+      const handleResultChange = (managerIndex, weekIndex, value) => {
+        const updatedManagers = [...managers];
+        updatedManagers[managerIndex].picks[weekIndex].result = value;
+        
+        // Update elimination status and margin of victory
+        if (value === 'L') {
+          updatedManagers[managerIndex].eliminated = true;
+        } else if (value === 'W') {
+          // For simplicity, we'll assume a fixed margin of 10 points
+          // In a real app, you would calculate this from actual game scores
+          updatedManagers[managerIndex].marginOfVictory += 10;
+        }
+        
+        setManagers(updatedManagers);
+        updateJsonData(updatedManagers);
+      };
+      
+      const updateJsonData = (updatedManagers) => {
+        const data = {
+          managers: updatedManagers,
+          lastUpdated: new Date().toISOString()
+        };
+        setJsonData(JSON.stringify(data, null, 2));
+      };
+      
+      const resetElimination = (managerIndex) => {
+        const updatedManagers = [...managers];
+        updatedManagers[managerIndex].eliminated = false;
+        updatedManagers[managerIndex].marginOfVictory = 0;
+        
+        // Reset all results
+        updatedManagers[managerIndex].picks.forEach(pick => {
+          pick.result = null;
+        });
+        
+        setManagers(updatedManagers);
+        updateJsonData(updatedManagers);
+      };
+      
+      const downloadJson = () => {
+        const blob = new Blob([jsonData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'data.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+      
+      if (!authenticated) {
+        return (
+          <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="glass rounded-2xl p-8 max-w-md w-full">
+              <div className="text-center mb-8">
+                <h1 className="text-3xl font-bold mb-2">Admin Login</h1>
+                <p className="text-purple-200">Enter your password to access the admin panel</p>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="Enter password"
+                  />
+                </div>
+                
+                {error && (
+                  <div className="text-red-400 text-sm">{error}</div>
+                )}
+                
+                <button
+                  onClick={handleLogin}
+                  className="w-full py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors"
+                >
+                  Login
+                </button>
+              </div>
+              
+              <div className="mt-6 text-center text-sm text-purple-300">
+                <p>Default password: <span className="font-mono">survivor2025</span></p>
+                <p className="mt-2">Change this after first login for security</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      
+      return (
+        <div className="min-h-screen p-4">
+          <div className="max-w-6xl mx-auto">
+            {/* Header */}
+            <header className="py-6 mb-8">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h1 className="text-3xl font-bold flex items-center gap-3">
+                    <i className="fas fa-user-shield"></i>
+                    Admin Panel
+                  </h1>
+                  <p className="text-purple-200 mt-1">Manage your NFL Survivor Pool</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowJson(!showJson)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                  >
+                    {showJson ? 'Hide JSON' : 'Show JSON'}
+                  </button>
+                  <button
+                    onClick={downloadJson}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <i className="fas fa-download"></i>
+                    Download data.json
+                  </button>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('adminAuthenticated');
+                      setAuthenticated(false);
+                    }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            </header>
+            
+            {/* JSON Editor */}
+            {showJson && (
+              <div className="glass rounded-2xl p-5 mb-8">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                  <i className="fas fa-code"></i> JSON Data
+                </h2>
+                <div className="bg-black/30 rounded-lg p-4 overflow-auto max-h-96">
+                  <pre className="text-sm text-green-300">{jsonData}</pre>
+                </div>
+                <div className="mt-4 text-sm text-purple-300">
+                  <p>After making changes, download this file and replace the data.json in your repository.</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Manager Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {managers.map((manager, managerIndex) => (
+                <div key={managerIndex} className="glass rounded-2xl p-5">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h2 className="text-xl font-bold">{manager.name}</h2>
+                      <p className="text-sm italic text-fuchsia-200">{manager.teamLabel}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        manager.eliminated 
+                          ? 'bg-red-500/80' 
+                          : 'bg-green-500/80'
+                      }`}>
+                        {manager.eliminated ? 'Eliminated' : 'Alive'}
+                      </span>
+                      <button
+                        onClick={() => resetElimination(managerIndex)}
+                        className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm transition-colors"
+                        title="Reset elimination status"
+                      >
+                        <i className="fas fa-undo"></i>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-purple-200">Weekly Picks</h3>
+                    
+                    {manager.picks.map((pick, weekIndex) => (
+                      <div key={weekIndex} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm mb-1">Week {pick.week} Team</label>
+                          <select
+                            value={pick.team}
+                            onChange={(e) => handlePickChange(managerIndex, weekIndex, e.target.value)}
+                            className="w-full p-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          >
+                            <option value="">Select a team</option>
+                            {nflTeams.map(team => (
+                              <option key={team} value={team}>{team}</option>
+                            ))}
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm mb-1">Result</label>
+                          <select
+                            value={pick.result || ''}
+                            onChange={(e) => handleResultChange(managerIndex, weekIndex, e.target.value || null)}
+                            className="w-full p-2 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          >
+                            <option value="">Not decided</option>
+                            <option value="W">Win</option>
+                            <option value="L">Loss</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
+                    <div>
+                      <span className="text-sm">Margin of Victory: </span>
+                      <span className="font-bold">{manager.marginOfVictory}</span>
+                    </div>
+                    <div>
+                      <span className="text-sm">Last Year Rank: </span>
+                      <span className="font-bold">#{manager.lastYearRank}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Instructions */}
+            <div className="glass rounded-2xl p-5">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <i className="fas fa-info-circle"></i> How to Update Your Site
+              </h2>
+              <ol className="list-decimal pl-5 space-y-2">
+                <li>Make changes to manager picks and results using the forms above</li>
+                <li>Click "Download data.json" to get the updated file</li>
+                <li>Go to your GitHub repository and replace the existing data.json file with your downloaded version</li>
+                <li>Commit and push the changes to update your live site</li>
+              </ol>
+              <div className="mt-4 p-4 bg-yellow-500/20 rounded-lg">
+                <p className="text-sm"><strong>Note:</strong> Changes will appear on the live site after a few minutes once GitHub Pages updates.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<AdminPanel />);
+  </script>
+</body>
+</html>

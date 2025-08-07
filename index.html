@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NFL Preseason Survivor Pool</title>
+  <!-- Tailwind CSS via Play CDN for rapid styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React and ReactDOM (development builds for easier debugging) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Chart.js for rendering bar charts -->
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Babel Standalone enables JSX in the browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Simple styling overrides -->
+  <style>
+    body {
+      /* fallback background gradient */
+      background-image: linear-gradient(to top right, #3730a3, #6d28d9);
+      font-family: 'Inter', sans-serif;
+    }
+    /* Scrollbar styling for nicer look */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.1);
+    }
+    ::-webkit-scrollbar-thumb {
+      background-color: rgba(255,255,255,0.3);
+      border-radius: 4px;
+    }
+    /* Animations */
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes trophy {
+      0%, 100% { transform: rotate(-15deg); }
+      50% { transform: rotate(15deg); }
+    }
+    .animate-pulse-slow {
+      animation: pulse 3s infinite;
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.5s ease-out;
+    }
+    .animate-trophy {
+      animation: trophy 2s infinite;
+      display: inline-block;
+    }
+    /* Glass effect */
+    .glass {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    /* Eliminated effect */
+    .eliminated {
+      position: relative;
+      overflow: hidden;
+    }
+    .eliminated::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(45deg, rgba(239, 68, 68, 0.3), transparent);
+      z-index: 1;
+    }
+    .eliminated > * {
+      position: relative;
+      z-index: 2;
+    }
+    /* Winner effect */
+    .winner-glow {
+      box-shadow: 0 0 20px rgba(253, 224, 71, 0.7);
+    }
+    /* Live game indicator */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .live-indicator {
+      animation: blink 1.5s infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen text-white font-sans">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    
+    // Preseason schedule used for reference
+    const preseasonSchedule = [
+      {
+        week: 1,
+        games: [
+          { date: '2025-08-07', matchup: 'Indianapolis at Baltimore', time: '7:00' },
+          { date: '2025-08-07', matchup: 'Cincinnati at Philadelphia', time: '7:30' },
+          { date: '2025-08-07', matchup: 'Las Vegas at Seattle', time: '10:00' },
+          { date: '2025-08-08', matchup: 'Detroit at Atlanta', time: '7:00' },
+          { date: '2025-08-08', matchup: 'Cleveland at Carolina', time: '7:00' },
+          { date: '2025-08-08', matchup: 'Washington at New England', time: '7:30' },
+          { date: '2025-08-09', matchup: 'N.Y. Giants at Buffalo', time: '1:00' },
+          { date: '2025-08-09', matchup: 'Houston at Minnesota', time: '4:00' },
+          { date: '2025-08-09', matchup: 'Pittsburgh at Jacksonville', time: '7:00' },
+          { date: '2025-08-09', matchup: 'Dallas at L.A. Rams', time: '7:00' },
+          { date: '2025-08-09', matchup: 'Tennessee at Tampa Bay', time: '7:30' },
+          { date: '2025-08-09', matchup: 'Kansas City at Arizona', time: '8:00' },
+          { date: '2025-08-09', matchup: 'N.Y. Jets at Green Bay', time: '8:00' },
+          { date: '2025-08-09', matchup: 'Denver at San Francisco', time: '8:30' },
+          { date: '2025-08-10', matchup: 'Miami at Chicago', time: '1:00' },
+          { date: '2025-08-10', matchup: 'New Orleans at L.A. Chargers', time: '4:05' },
+        ]
+      },
+      {
+        week: 2,
+        games: [
+          { date: '2025-08-15', matchup: 'Tennessee at Atlanta', time: '7:00' },
+          { date: '2025-08-15', matchup: 'Kansas City at Seattle', time: '10:00' },
+          { date: '2025-08-16', matchup: 'Miami at Detroit', time: '1:00' },
+          { date: '2025-08-16', matchup: 'Carolina at Houston', time: '1:00' },
+          { date: '2025-08-16', matchup: 'Green Bay at Indianapolis', time: '1:00' },
+          { date: '2025-08-16', matchup: 'New England at Minnesota', time: '1:00' },
+          { date: '2025-08-16', matchup: 'Cleveland at Philadelphia', time: '1:00' },
+          { date: '2025-08-16', matchup: 'San Francisco at Las Vegas', time: '4:00' },
+          { date: '2025-08-16', matchup: 'Baltimore at Dallas', time: '7:00' },
+          { date: '2025-08-16', matchup: 'L.A. Chargers at L.A. Rams', time: '7:00' },
+          { date: '2025-08-16', matchup: 'N.Y. Jets at N.Y. Giants', time: '7:00' },
+          { date: '2025-08-16', matchup: 'Tampa Bay at Pittsburgh', time: '7:00' },
+          { date: '2025-08-16', matchup: 'Arizona at Denver', time: '9:30' },
+          { date: '2025-08-17', matchup: 'Jacksonville at New Orleans', time: '1:00' },
+          { date: '2025-08-17', matchup: 'Buffalo at Chicago', time: '8:00' },
+          { date: '2025-08-18', matchup: 'Cincinnati at Washington', time: '8:00' },
+        ]
+      },
+      {
+        week: 3,
+        games: [
+          { date: '2025-08-21', matchup: 'Pittsburgh at Carolina', time: '7:00' },
+          { date: '2025-08-21', matchup: 'New England at N.Y. Giants', time: '8:00' },
+          { date: '2025-08-22', matchup: 'Philadelphia at N.Y. Jets', time: '7:30' },
+          { date: '2025-08-22', matchup: 'Atlanta at Dallas', time: '8:00' },
+          { date: '2025-08-22', matchup: 'Minnesota at Tennessee', time: '8:00' },
+          { date: '2025-08-22', matchup: 'Chicago at Kansas City', time: '8:20' },
+          { date: '2025-08-23', matchup: 'Baltimore at Washington', time: '12:00' },
+          { date: '2025-08-23', matchup: 'Indianapolis at Cincinnati', time: '1:00' },
+          { date: '2025-08-23', matchup: 'L.A. Rams at Cleveland', time: '1:00' },
+          { date: '2025-08-23', matchup: 'Houston at Detroit', time: '1:00' },
+          { date: '2025-08-23', matchup: 'Denver at New Orleans', time: '1:00' },
+          { date: '2025-08-23', matchup: 'Seattle at Green Bay', time: '4:00' },
+          { date: '2025-08-23', matchup: 'Jacksonville at Miami', time: '7:00' },
+          { date: '2025-08-23', matchup: 'Buffalo at Tampa Bay', time: '7:30' },
+          { date: '2025-08-23', matchup: 'L.A. Chargers at San Francisco', time: '8:30' },
+          { date: '2025-08-23', matchup: 'Las Vegas at Arizona', time: '10:00' },
+        ]
+      }
+    ];
+
+    // Complete list of NFL teams
+    const nflTeams = [
+      'Arizona Cardinals','Atlanta Falcons','Baltimore Ravens','Buffalo Bills','Carolina Panthers','Chicago Bears',
+      'Cincinnati Bengals','Cleveland Browns','Dallas Cowboys','Denver Broncos','Detroit Lions','Green Bay Packers',
+      'Houston Texans','Indianapolis Colts','Jacksonville Jaguars','Kansas City Chiefs','Las Vegas Raiders',
+      'Los Angeles Chargers','Los Angeles Rams','Miami Dolphins','Minnesota Vikings','New England Patriots',
+      'New Orleans Saints','New York Giants','New York Jets','Philadelphia Eagles','Pittsburgh Steelers',
+      'San Francisco 49ers','Seattle Seahawks','Tampa Bay Buccaneers','Tennessee Titans','Washington Commanders'
+    ];
+
+    function App() {
+      const [managers, setManagers] = useState([]);
+      const [games, setGames] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [lastUpdated, setLastUpdated] = useState('');
+      
+      // Fetch data from data.json
+      useEffect(() => {
+        fetch('data.json')
+          .then(response => response.json())
+          .then(data => {
+            setManagers(data.managers);
+            setLastUpdated(data.lastUpdated);
+            setLoading(false);
+          })
+          .catch(error => {
+            console.error('Error loading data:', error);
+            setLoading(false);
+          });
+      }, []);
+
+      // Fetch scores periodically from ESPN
+      useEffect(() => {
+        let cancelled = false;
+        async function fetchScores() {
+          try {
+            const res = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
+            const data = await res.json();
+            if (!cancelled) {
+              setGames(data.events || []);
+            }
+          } catch (err) {
+            console.error('Error fetching scores:', err);
+          }
+        }
+        
+        // Initial fetch
+        fetchScores();
+        // Poll every 2 minutes
+        const intervalId = setInterval(fetchScores, 2 * 60 * 1000);
+        return () => {
+          cancelled = true;
+          clearInterval(intervalId);
+        };
+      }, []);
+
+      /**
+       * Calculate elimination week and draft order
+       */
+      function computeDraftOrder(managers) {
+        return managers.map(mgr => {
+          // Determine elimination week: find index of first L
+          const lossIndex = mgr.picks.findIndex(p => p.result === 'L');
+          const eliminationWeek = lossIndex >= 0 ? (lossIndex + 1) : 4;
+          return { ...mgr, eliminationWeek };
+        }).sort((a, b) => {
+          // Higher elimination week first
+          if (a.eliminationWeek !== b.eliminationWeek) return b.eliminationWeek - a.eliminationWeek;
+          // Higher margin of victory next
+          if (a.marginOfVictory !== b.marginOfVictory) return b.marginOfVictory - a.marginOfVictory;
+          // Last year's rank (smaller is better)
+          return a.lastYearRank - b.lastYearRank;
+        }).map((mgr, idx) => ({ ...mgr, draftOrder: idx + 1 }));
+      }
+
+      const orderedManagers = computeDraftOrder(managers);
+      // Build data for bar chart
+      const chartData = orderedManagers.map(mgr => {
+        const wins = mgr.picks.filter(p => p.result === 'W').length;
+        return { name: mgr.name, wins };
+      });
+
+      // Chart.js reference
+      const chartRef = useRef(null);
+      const chartInstance = useRef(null);
+
+      // Render or update the bar chart
+      useEffect(() => {
+        if (!chartRef.current || chartData.length === 0) return;
+        const ctx = chartRef.current.getContext('2d');
+        
+        // Destroy any existing chart
+        if (chartInstance.current) {
+          chartInstance.current.destroy();
+        }
+        
+        chartInstance.current = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: chartData.map(item => item.name),
+            datasets: [
+              {
+                label: 'Survived Weeks',
+                data: chartData.map(item => item.wins),
+                backgroundColor: chartData.map((_, idx) => 
+                  orderedManagers[idx].draftOrder === 1 ? 'rgba(253, 224, 71, 0.8)' : 'rgba(99, 102, 241, 0.7)'
+                ),
+                borderColor: chartData.map((_, idx) => 
+                  orderedManagers[idx].draftOrder === 1 ? 'rgba(253, 224, 71, 1)' : 'rgba(99, 102, 241, 1)'
+                ),
+                borderWidth: 1,
+                borderRadius: 5
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: {
+                ticks: { color: '#fff', font: { size: 12 } },
+                grid: { display: false }
+              },
+              y: {
+                beginAtZero: true,
+                max: 3,
+                ticks: { 
+                  color: '#fff', 
+                  font: { size: 12 }, 
+                  stepSize: 1,
+                  callback: function(value) {
+                    return value === 0 ? '0' : value === 1 ? '1' : value === 2 ? '2' : '3';
+                  }
+                },
+                grid: { color: 'rgba(255, 255, 255, 0.2)' }
+              }
+            },
+            plugins: {
+              legend: {
+                labels: { color: '#fff' }
+              },
+              tooltip: {
+                backgroundColor: 'rgba(255,255,255,0.9)',
+                titleColor: '#000',
+                bodyColor: '#000',
+                borderColor: 'rgba(0,0,0,0.1)',
+                borderWidth: 1,
+                callbacks: {
+                  label: function(context) {
+                    return `Survived: ${context.raw} week${context.raw !== 1 ? 's' : ''}`;
+                  }
+                }
+              }
+            }
+          }
+        });
+        
+        // Cleanup
+        return () => {
+          if (chartInstance.current) {
+            chartInstance.current.destroy();
+            chartInstance.current = null;
+          }
+        };
+      }, [chartData, orderedManagers]);
+
+      if (loading) {
+        return (
+          <div className="flex items-center justify-center min-h-screen">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-purple-500 mx-auto"></div>
+              <p className="mt-4 text-xl">Loading Survivor Pool...</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="p-4 space-y-6 max-w-7xl mx-auto">
+          {/* Header */}
+          <header className="text-center py-6 animate-fade-in">
+            <h1 className="text-4xl md:text-5xl font-bold flex items-center justify-center gap-3 drop-shadow-lg">
+              <span className="animate-trophy">🏆</span>
+              NFL Preseason Survivor Pool
+            </h1>
+            <p className="mt-2 text-lg md:text-xl">Track your league's preseason picks and draft order</p>
+            <div className="mt-4 text-sm text-purple-200">
+              Last updated: {new Date(lastUpdated).toLocaleString()}
+            </div>
+          </header>
+
+          {/* Stats Overview */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in">
+            <div className="glass rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-yellow-300">{managers.length}</div>
+              <div className="text-sm">Managers</div>
+            </div>
+            <div className="glass rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-green-400">{managers.filter(m => !m.eliminated).length}</div>
+              <div className="text-sm">Still Alive</div>
+            </div>
+            <div className="glass rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-red-400">{managers.filter(m => m.eliminated).length}</div>
+              <div className="text-sm">Eliminated</div>
+            </div>
+            <div className="glass rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-purple-400">{orderedManagers[0]?.name || '-'}</div>
+              <div className="text-sm">Current Leader</div>
+            </div>
+          </div>
+
+          {/* Manager Cards */}
+          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {orderedManagers.map((mgr, mgrIdx) => {
+              const isEliminated = mgr.eliminated;
+              const isWinner = mgr.draftOrder === 1;
+              
+              return (
+                <div 
+                  key={mgr.name} 
+                  className={`glass rounded-2xl p-5 transition-all duration-300 transform hover:scale-[1.02] ${isEliminated ? 'eliminated' : ''} ${isWinner ? 'winner-glow' : ''} animate-fade-in`}
+                  style={{ animationDelay: `${mgrIdx * 0.1}s` }}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-bold">{mgr.name}</h2>
+                        {isWinner && <span className="animate-trophy text-2xl">🏆</span>}
+                      </div>
+                      <p className="text-sm italic text-fuchsia-200">{mgr.teamLabel}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm">Draft Pick:</span>
+                        <span className={`font-bold text-lg ${isWinner ? 'text-yellow-300' : 'text-white'}`}>
+                          #{mgr.draftOrder}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm">Margin:</span>
+                        <span className="font-bold">{mgr.marginOfVictory}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Picks display */}
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold mb-2 text-purple-200">Weekly Picks</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {mgr.picks.map((pick, idx) => (
+                        <div 
+                          key={idx} 
+                          className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+                            pick.result === 'W' 
+                              ? 'bg-green-500/80' 
+                              : pick.result === 'L' 
+                                ? 'bg-red-500/80' 
+                                : 'bg-gray-700/60'
+                          }`}
+                        >
+                          <span>Wk {pick.week}:</span>
+                          <span>{pick.team || 'TBD'}</span>
+                          {pick.result && (
+                            <span className="font-bold">
+                              {pick.result === 'W' ? '✓' : '✗'}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Status indicator */}
+                  <div className="flex justify-between items-center mt-2 pt-3 border-t border-white/10">
+                    <div className="text-sm">
+                      {isEliminated ? (
+                        <span className="text-red-400 font-medium flex items-center gap-1">
+                          <i className="fas fa-skull"></i> Eliminated Week {mgr.eliminationWeek}
+                        </span>
+                      ) : (
+                        <span className="text-green-400 font-medium flex items-center gap-1">
+                          <i className="fas fa-heart animate-pulse-slow"></i> Still Alive
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-300">
+                      {mgr.eliminationWeek === 4 ? 'Survived all weeks!' : `Lasted ${mgr.eliminationWeek} week${mgr.eliminationWeek !== 1 ? 's' : ''}`}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+
+          {/* Chart Section */}
+          <section className="glass rounded-2xl p-5 animate-fade-in">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <i className="fas fa-chart-bar"></i> Survival Progress
+            </h2>
+            <div className="relative h-64">
+              <canvas ref={chartRef} className="w-full h-full" />
+            </div>
+          </section>
+
+          {/* Preseason Schedule */}
+          <section className="glass rounded-2xl p-5 overflow-auto animate-fade-in">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <i className="fas fa-calendar-alt"></i> Preseason Schedule (Weeks 1–3)
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-purple-800/40">
+                  <tr>
+                    <th className="p-2">Week</th>
+                    <th className="p-2">Date</th>
+                    <th className="p-2">Time (ET)</th>
+                    <th className="p-2 text-left">Matchup</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preseasonSchedule.flatMap(week => 
+                    week.games.map((game, idx) => (
+                      <tr key={`${week.week}-${idx}`} className={idx % 2 === 0 ? 'bg-purple-700/30' : 'bg-purple-700/20'}>
+                        <td className="p-2 text-center">{week.week}</td>
+                        <td className="p-2 text-center">{game.date}</td>
+                        <td className="p-2 text-center">{game.time}</td>
+                        <td className="p-2">{game.matchup}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Live Scoreboard Section */}
+          <section className="glass rounded-2xl p-5 overflow-auto animate-fade-in">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <i className="fas fa-football-ball"></i> Live Scoreboard
+              {games.length > 0 && (
+                <span className="ml-2 px-2 py-1 bg-red-500 text-xs rounded-full live-indicator">
+                  LIVE
+                </span>
+              )}
+            </h2>
+            {games && games.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-indigo-800/40">
+                    <tr>
+                      <th className="p-2 text-left">Matchup</th>
+                      <th className="p-2 text-center">Score</th>
+                      <th className="p-2 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {games.map((ev, idx) => {
+                      const comp = ev.competitions && ev.competitions[0];
+                      if (!comp) return null;
+                      const teams = comp.competitors;
+                      const home = teams.find(t => t.homeAway === 'home');
+                      const away = teams.find(t => t.homeAway === 'away');
+                      const statusDesc = ev.status && ev.status.type && ev.status.type.shortDetail;
+                      const isCompleted = ev.status && ev.status.type && ev.status.type.state === 'post';
+                      
+                      return (
+                        <tr key={idx} className={idx % 2 === 0 ? 'bg-indigo-700/30' : 'bg-indigo-700/20'}>
+                          <td className="p-2">
+                            <div className="flex items-center gap-2">
+                              <div>{away.team.displayName}</div>
+                              <div className="text-gray-400">@</div>
+                              <div>{home.team.displayName}</div>
+                            </div>
+                          </td>
+                          <td className="p-2 text-center font-mono">
+                            {away.score} – {home.score}
+                          </td>
+                          <td className="p-2 text-center">
+                            <span className={`px-2 py-1 rounded-full text-xs ${
+                              isCompleted 
+                                ? 'bg-green-500/80' 
+                                : 'bg-yellow-500/80'
+                            }`}>
+                              {statusDesc}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <i className="fas fa-info-circle text-3xl text-purple-300 mb-2"></i>
+                <p className="text-purple-200">No games in progress or data unavailable.</p>
+              </div>
+            )}
+          </section>
+
+          {/* Footer */}
+          <footer className="text-center py-6 text-sm text-purple-300 border-t border-white/10">
+            <p>NFL Preseason Survivor Pool • Draft order determined by survival and margin of victory</p>
+            <p className="mt-1">Admin: <a href="admin.html" className="text-purple-200 hover:text-white">Manage Pool</a></p>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

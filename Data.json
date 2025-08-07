@@ -1,0 +1,125 @@
+{
+  "managers": [
+    {
+      "name": "Chris",
+      "teamLabel": "Hello Naber!",
+      "lastYearRank": 1,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Josh",
+      "teamLabel": "S K",
+      "lastYearRank": 2,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Kevin",
+      "teamLabel": "Check My Balls",
+      "lastYearRank": 3,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Austin",
+      "teamLabel": "Honey Baked Lamb",
+      "lastYearRank": 4,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Ryan",
+      "teamLabel": "Quail Man SWAG",
+      "lastYearRank": 5,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Weston",
+      "teamLabel": "Robert DUUUVAL",
+      "lastYearRank": 6,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Jordan",
+      "teamLabel": "GRAVEDIGGER",
+      "lastYearRank": 7,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "John",
+      "teamLabel": "DELTA 8",
+      "lastYearRank": 8,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Nick",
+      "teamLabel": "Allen's Dirty Brown Kupp",
+      "lastYearRank": 9,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "William",
+      "teamLabel": "Just Win Baby",
+      "lastYearRank": 10,
+      "picks": [
+        { "week": 1, "team": "", "result": null },
+        { "week": 2, "team": "", "result": null },
+        { "week": 3, "team": "", "result": null }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    }
+  ],
+  "lastUpdated": "2025-06-18T00:00:00Z"
+}
