@@ -23,6 +23,35 @@
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .notification {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 15px 20px;
+      border-radius: 8px;
+      color: white;
+      font-weight: 500;
+      z-index: 1001;
+      animation: slideIn 0.3s ease-out;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
+    .success { background-color: #10b981; }
+    .error { background-color: #ef4444; }
   </style>
 </head>
 <body class="min-h-screen text-white font-sans">
@@ -48,6 +77,16 @@
       const [showJson, setShowJson] = useState(false);
       const [password, setPassword] = useState('');
       const [error, setError] = useState('');
+      const [notification, setNotification] = useState(null);
+      const [showChangePassword, setShowChangePassword] = useState(false);
+      const [newPassword, setNewPassword] = useState('');
+      const [confirmPassword, setConfirmPassword] = useState('');
+      const [showAddManager, setShowAddManager] = useState(false);
+      const [newManager, setNewManager] = useState({
+        name: '',
+        teamLabel: '',
+        lastYearRank: 11
+      });
       
       // Check password on load
       useEffect(() => {
@@ -59,8 +98,8 @@
       }, []);
       
       const handleLogin = () => {
-        // In a real app, you'd use a more secure method
-        if (password === 'survivor2025') {
+        const storedPassword = localStorage.getItem('adminPassword') || 'survivor2025';
+        if (password === storedPassword) {
           setAuthenticated(true);
           localStorage.setItem('adminAuthenticated', 'true');
           setError('');
@@ -68,6 +107,29 @@
         } else {
           setError('Incorrect password');
         }
+      };
+      
+      const handleChangePassword = () => {
+        if (newPassword !== confirmPassword) {
+          showNotification('Passwords do not match', 'error');
+          return;
+        }
+        
+        if (newPassword.length < 6) {
+          showNotification('Password must be at least 6 characters', 'error');
+          return;
+        }
+        
+        localStorage.setItem('adminPassword', newPassword);
+        setShowChangePassword(false);
+        setNewPassword('');
+        setConfirmPassword('');
+        showNotification('Password changed successfully', 'success');
+      };
+      
+      const showNotification = (message, type) => {
+        setNotification({ message, type });
+        setTimeout(() => setNotification(null), 3000);
       };
       
       const loadData = () => {
@@ -79,6 +141,7 @@
           })
           .catch(error => {
             console.error('Error loading data:', error);
+            showNotification('Error loading data', 'error');
           });
       };
       
@@ -106,6 +169,13 @@
         updateJsonData(updatedManagers);
       };
       
+      const handleManagerInfoChange = (managerIndex, field, value) => {
+        const updatedManagers = [...managers];
+        updatedManagers[managerIndex][field] = field === 'lastYearRank' ? parseInt(value) : value;
+        setManagers(updatedManagers);
+        updateJsonData(updatedManagers);
+      };
+      
       const updateJsonData = (updatedManagers) => {
         const data = {
           managers: updatedManagers,
@@ -126,6 +196,43 @@
         
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
+        showNotification('Manager reset successfully', 'success');
+      };
+      
+      const addManager = () => {
+        if (!newManager.name.trim() || !newManager.teamLabel.trim()) {
+          showNotification('Please fill in all fields', 'error');
+          return;
+        }
+        
+        const managerToAdd = {
+          ...newManager,
+          picks: [
+            { week: 1, team: '', result: null },
+            { week: 2, team: '', result: null },
+            { week: 3, team: '', result: null }
+          ],
+          eliminated: false,
+          marginOfVictory: 0
+        };
+        
+        const updatedManagers = [...managers, managerToAdd];
+        setManagers(updatedManagers);
+        updateJsonData(updatedManagers);
+        
+        setNewManager({ name: '', teamLabel: '', lastYearRank: 11 });
+        setShowAddManager(false);
+        showNotification('Manager added successfully', 'success');
+      };
+      
+      const removeManager = (managerIndex) => {
+        if (window.confirm('Are you sure you want to remove this manager?')) {
+          const updatedManagers = [...managers];
+          updatedManagers.splice(managerIndex, 1);
+          setManagers(updatedManagers);
+          updateJsonData(updatedManagers);
+          showNotification('Manager removed successfully', 'success');
+        }
       };
       
       const downloadJson = () => {
@@ -138,6 +245,7 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        showNotification('Data downloaded successfully', 'success');
       };
       
       if (!authenticated) {
@@ -187,7 +295,7 @@
           <div className="max-w-6xl mx-auto">
             {/* Header */}
             <header className="py-6 mb-8">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                   <h1 className="text-3xl font-bold flex items-center gap-3">
                     <i className="fas fa-user-shield"></i>
@@ -195,7 +303,14 @@
                   </h1>
                   <p className="text-purple-200 mt-1">Manage your NFL Survivor Pool</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => setShowChangePassword(true)}
+                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <i className="fas fa-key"></i>
+                    Change Password
+                  </button>
                   <button
                     onClick={() => setShowJson(!showJson)}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
@@ -237,14 +352,44 @@
               </div>
             )}
             
+            {/* Add Manager Button */}
+            <div className="mb-6">
+              <button
+                onClick={() => setShowAddManager(true)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <i className="fas fa-plus"></i>
+                Add New Manager
+              </button>
+            </div>
+            
             {/* Manager Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               {managers.map((manager, managerIndex) => (
                 <div key={managerIndex} className="glass rounded-2xl p-5">
                   <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h2 className="text-xl font-bold">{manager.name}</h2>
-                      <p className="text-sm italic text-fuchsia-200">{manager.teamLabel}</p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <input
+                          type="text"
+                          value={manager.name}
+                          onChange={(e) => handleManagerInfoChange(managerIndex, 'name', e.target.value)}
+                          className="text-xl font-bold bg-transparent border-b border-white/30 focus:outline-none focus:border-purple-400"
+                        />
+                        <button
+                          onClick={() => removeManager(managerIndex)}
+                          className="text-red-400 hover:text-red-300"
+                          title="Remove manager"
+                        >
+                          <i className="fas fa-trash-alt"></i>
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={manager.teamLabel}
+                        onChange={(e) => handleManagerInfoChange(managerIndex, 'teamLabel', e.target.value)}
+                        className="text-sm italic text-fuchsia-200 bg-transparent border-b border-white/30 focus:outline-none focus:border-purple-400 w-full max-w-xs"
+                      />
                     </div>
                     <div className="flex gap-2">
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -299,14 +444,21 @@
                     ))}
                   </div>
                   
-                  <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
+                  <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap gap-4">
                     <div>
                       <span className="text-sm">Margin of Victory: </span>
                       <span className="font-bold">{manager.marginOfVictory}</span>
                     </div>
                     <div>
                       <span className="text-sm">Last Year Rank: </span>
-                      <span className="font-bold">#{manager.lastYearRank}</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={manager.lastYearRank}
+                        onChange={(e) => handleManagerInfoChange(managerIndex, 'lastYearRank', parseInt(e.target.value))}
+                        className="w-16 p-1 rounded bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      />
                     </div>
                   </div>
                 </div>
@@ -329,6 +481,128 @@
               </div>
             </div>
           </div>
+          
+          {/* Change Password Modal */}
+          {showChangePassword && (
+            <div className="modal">
+              <div className="glass rounded-2xl p-6 max-w-md w-full">
+                <h2 className="text-2xl font-bold mb-4">Change Admin Password</h2>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">New Password</label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Enter new password"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Confirm Password</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Confirm new password"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => {
+                      setShowChangePassword(false);
+                      setNewPassword('');
+                      setConfirmPassword('');
+                    }}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleChangePassword}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+                  >
+                    Change Password
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Add Manager Modal */}
+          {showAddManager && (
+            <div className="modal">
+              <div className="glass rounded-2xl p-6 max-w-md w-full">
+                <h2 className="text-2xl font-bold mb-4">Add New Manager</h2>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Manager Name</label>
+                    <input
+                      type="text"
+                      value={newManager.name}
+                      onChange={(e) => setNewManager({...newManager, name: e.target.value})}
+                      className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Enter manager name"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Team Label</label>
+                    <input
+                      type="text"
+                      value={newManager.teamLabel}
+                      onChange={(e) => setNewManager({...newManager, teamLabel: e.target.value})}
+                      className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="Enter team label"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Last Year Rank</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={newManager.lastYearRank}
+                      onChange={(e) => setNewManager({...newManager, lastYearRank: parseInt(e.target.value) || 11})}
+                      className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => {
+                      setShowAddManager(false);
+                      setNewManager({ name: '', teamLabel: '', lastYearRank: 11 });
+                    }}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={addManager}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+                  >
+                    Add Manager
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Notification */}
+          {notification && (
+            <div className={`notification ${notification.type}`}>
+              {notification.message}
+            </div>
+          )}
         </div>
       );
     }
