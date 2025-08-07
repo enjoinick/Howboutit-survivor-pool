@@ -55,13 +55,18 @@
     
     /* Fixed dropdown styling */
     select {
-      background-color: #4B5563 !important;
+      background-color: #1f2937 !important;
       color: white !important;
-      border: 1px solid #6B7280 !important;
+      border: 1px solid #4b5563 !important;
     }
     select option {
-      background-color: #4B5563 !important;
+      background-color: #374151 !important;
       color: white !important;
+    }
+    select:focus {
+      outline: none !important;
+      border-color: #8b5cf6 !important;
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3) !important;
     }
     input[type="text"], input[type="number"], input[type="password"] {
       background-color: rgba(75, 85, 99, 0.7) !important;
@@ -151,6 +156,7 @@
         fetch('data.json')
           .then(response => response.json())
           .then(data => {
+            console.log('Data loaded:', data);
             setManagers(data.managers);
             setJsonData(JSON.stringify(data, null, 2));
           })
@@ -165,6 +171,11 @@
         updatedManagers[managerIndex].picks[weekIndex].team = value;
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
+        
+        // Force a refresh to ensure data is updated
+        setTimeout(() => {
+          loadData();
+        }, 100);
       };
       
       const handleResultChange = (managerIndex, weekIndex, value) => {
@@ -182,6 +193,11 @@
         
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
+        
+        // Force a refresh to ensure data is updated
+        setTimeout(() => {
+          loadData();
+        }, 100);
       };
       
       const handleManagerInfoChange = (managerIndex, field, value) => {
@@ -189,6 +205,11 @@
         updatedManagers[managerIndex][field] = field === 'lastYearRank' ? parseInt(value) : value;
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
+        
+        // Force a refresh to ensure data is updated
+        setTimeout(() => {
+          loadData();
+        }, 100);
       };
       
       const updateJsonData = (updatedManagers) => {
@@ -197,6 +218,32 @@
           lastUpdated: new Date().toISOString()
         };
         setJsonData(JSON.stringify(data, null, 2));
+        
+        // Auto-save to data.json
+        saveDataToFile(data);
+      };
+      
+      const saveDataToFile = (data) => {
+        fetch('/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            filename: 'data.json',
+            content: JSON.stringify(data, null, 2)
+          })
+        })
+        .then(response => response.json())
+        .then(result => {
+          console.log('Data saved successfully:', result);
+          showNotification('Data auto-saved', 'success');
+        })
+        .catch(error => {
+          console.error('Error auto-saving data:', error);
+          // If direct save fails, show notification that manual download is needed
+          showNotification('Changes made. Download data.json to save permanently.', 'error');
+        });
       };
       
       const resetElimination = (managerIndex) => {
@@ -212,6 +259,11 @@
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
         showNotification('Manager reset successfully', 'success');
+        
+        // Force a refresh to ensure data is updated
+        setTimeout(() => {
+          loadData();
+        }, 100);
       };
       
       const addManager = () => {
@@ -238,6 +290,11 @@
         setNewManager({ name: '', teamLabel: '', lastYearRank: 11 });
         setShowAddManager(false);
         showNotification('Manager added successfully', 'success');
+        
+        // Force a refresh to ensure data is updated
+        setTimeout(() => {
+          loadData();
+        }, 100);
       };
       
       const removeManager = (managerIndex) => {
@@ -247,6 +304,11 @@
           setManagers(updatedManagers);
           updateJsonData(updatedManagers);
           showNotification('Manager removed successfully', 'success');
+          
+          // Force a refresh to ensure data is updated
+          setTimeout(() => {
+            loadData();
+          }, 100);
         }
       };
       
