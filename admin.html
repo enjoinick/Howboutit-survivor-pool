@@ -351,6 +351,22 @@
                 </div>
               </div>
             </header>
+
+            {/* Instructions */}
+            <div className="glass rounded-2xl p-5 mb-6 bg-purple-500/20 border-2 border-purple-400">
+              <h2 className="text-xl font-semibold mb-3 flex items-center gap-2 text-yellow-300">
+                <i className="fas fa-info-circle"></i> How to Update Your Site
+              </h2>
+              <ol className="list-decimal pl-5 space-y-2 text-purple-100">
+                <li>Make changes to manager picks and results using the forms below.</li>
+                <li>Click the <span className="font-bold">"Save & Download Data"</span> button to get the updated file.</li>
+                <li>Go to your GitHub repository and replace the existing `data.json` file with your downloaded version.</li>
+                <li>Commit and push the changes to update your live site.</li>
+              </ol>
+              <div className="mt-4 p-3 bg-yellow-500/20 rounded-lg">
+                <p className="text-sm text-yellow-200"><strong>Note:</strong> Changes will appear on the live site after a few minutes once GitHub Pages updates.</p>
+              </div>
+            </div>
             
             {/* JSON Editor */}
             {showJson && (
@@ -480,21 +496,6 @@
               ))}
             </div>
             
-            {/* Instructions */}
-            <div className="glass rounded-2xl p-5">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <i className="fas fa-info-circle"></i> How to Update Your Site
-              </h2>
-              <ol className="list-decimal pl-5 space-y-2">
-                <li>Make changes to manager picks and results using the forms above</li>
-                <li>Click "Download data.json" to get the updated file</li>
-                <li>Go to your GitHub repository and replace the existing data.json file with your downloaded version</li>
-                <li>Commit and push the changes to update your live site</li>
-              </ol>
-              <div className="mt-4 p-4 bg-yellow-500/20 rounded-lg">
-                <p className="text-sm"><strong>Note:</strong> Changes will appear on the live site after a few minutes once GitHub Pages updates.</p>
-              </div>
-            </div>
           </div>
           
           {/* Change Password Modal */}
