@@ -78,7 +78,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
     
     // Complete list of NFL teams
     const nflTeams = [
@@ -113,6 +113,8 @@
       const [gistToken, setGistToken] = useState(localStorage.getItem('gistToken') || '');
       const [isSaving, setIsSaving] = useState(false);
       const [dirty, setDirty] = useState(false);
+      // File input ref for importing JSON
+      const fileInputRef = useRef(null);
       
       // Check password on load
       useEffect(() => {
@@ -122,6 +124,21 @@
           loadData();
         }
       }, []);
+
+      // If no gistId in localStorage, try to default from config.json
+      useEffect(() => {
+        if (!gistId) {
+          fetch(`config.json?t=${Date.now()}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(cfg => {
+              if (cfg && cfg.gistId) {
+                setGistId(cfg.gistId);
+                localStorage.setItem('gistId', cfg.gistId);
+              }
+            })
+            .catch(() => {});
+        }
+      }, [gistId]);
       
       const handleLogin = () => {
         const storedPassword = localStorage.getItem('adminPassword') || 'survivor2025';
@@ -265,6 +282,45 @@
         };
         setJsonData(JSON.stringify(data, null, 2));
         setDirty(true);
+      };
+
+      // Copy current JSON to clipboard
+      const copyJson = async () => {
+        try {
+          await navigator.clipboard.writeText(jsonData);
+          showNotification('Copied JSON to clipboard', 'success');
+        } catch (e) {
+          showNotification('Copy failed', 'error');
+        }
+      };
+
+      // Trigger hidden file input to import JSON
+      const handleImportClick = () => {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        fileInputRef.current?.click();
+      };
+
+      // Handle JSON file selection
+      const handleFileSelected = async (e) => {
+        try {
+          const file = e.target.files && e.target.files[0];
+          if (!file) return;
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if (!data || typeof data !== 'object' || !Array.isArray(data.managers)) {
+            throw new Error('Invalid JSON format: expected { managers: [...] }');
+          }
+          setManagers(data.managers);
+          setJsonData(JSON.stringify({
+            managers: data.managers,
+            lastUpdated: new Date().toISOString()
+          }, null, 2));
+          setDirty(true);
+          showNotification('Imported JSON successfully', 'success');
+        } catch (err) {
+          console.error(err);
+          showNotification('Import failed. Ensure valid data.json structure.', 'error');
+        }
       };
 
       // Save current jsonData to configured Gist
@@ -468,6 +524,14 @@
                     Settings
                   </button>
                   <button
+                    onClick={handleImportClick}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors flex items-center gap-2"
+                    title="Import data.json from your computer"
+                  >
+                    <i className="fas fa-file-import"></i>
+                    Import JSON
+                  </button>
+                  <button
                     onClick={saveToGist}
                     disabled={!dirty || isSaving}
                     className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${(!dirty || isSaving) ? 'bg-green-800 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700'}`}
@@ -488,6 +552,14 @@
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
                   >
                     {showJson ? 'Hide JSON' : 'Show JSON'}
+                  </button>
+                  <button
+                    onClick={copyJson}
+                    className="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors flex items-center gap-2"
+                    title="Copy current JSON to clipboard"
+                  >
+                    <i className="fas fa-clipboard"></i>
+                    Copy JSON
                   </button>
                   <button
                     onClick={downloadJson}
@@ -689,7 +761,17 @@
               </div>
             </div>
           </div>
-          
+          </div>
+
+          {/* Hidden file input for import */}
+          <input
+            type="file"
+            accept="application/json"
+            ref={fileInputRef}
+            onChange={handleFileSelected}
+            style={{ display: 'none' }}
+          />
+
           {/* Settings Modal */}
           {showSettings && (
             <div className="modal" role="dialog" aria-modal="true" aria-label="Gist Settings">
