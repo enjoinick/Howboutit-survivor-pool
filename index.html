@@ -94,6 +94,14 @@
     .live-indicator {
       animation: blink 1.5s infinite;
     }
+    /* Refresh button animation */
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .animate-rotate {
+      animation: rotate 1s linear;
+    }
   </style>
 </head>
 <body class="min-h-screen text-white font-sans">
@@ -169,35 +177,35 @@
       }
     ];
 
-    // Complete list of NFL teams
-    const nflTeams = [
-      'Arizona Cardinals','Atlanta Falcons','Baltimore Ravens','Buffalo Bills','Carolina Panthers','Chicago Bears',
-      'Cincinnati Bengals','Cleveland Browns','Dallas Cowboys','Denver Broncos','Detroit Lions','Green Bay Packers',
-      'Houston Texans','Indianapolis Colts','Jacksonville Jaguars','Kansas City Chiefs','Las Vegas Raiders',
-      'Los Angeles Chargers','Los Angeles Rams','Miami Dolphins','Minnesota Vikings','New England Patriots',
-      'New Orleans Saints','New York Giants','New York Jets','Philadelphia Eagles','Pittsburgh Steelers',
-      'San Francisco 49ers','Seattle Seahawks','Tampa Bay Buccaneers','Tennessee Titans','Washington Commanders'
-    ];
-
     function App() {
       const [managers, setManagers] = useState([]);
       const [games, setGames] = useState([]);
       const [loading, setLoading] = useState(true);
       const [lastUpdated, setLastUpdated] = useState('');
+      const [refreshing, setRefreshing] = useState(false);
       
-      // Fetch data from data.json
-      useEffect(() => {
-        fetch('data.json')
+      // Function to load data with cache-busting
+      const loadData = () => {
+        setRefreshing(true);
+        const timestamp = new Date().getTime();
+        fetch(`data.json?t=${timestamp}`)
           .then(response => response.json())
           .then(data => {
             setManagers(data.managers);
             setLastUpdated(data.lastUpdated);
             setLoading(false);
+            setRefreshing(false);
           })
           .catch(error => {
             console.error('Error loading data:', error);
             setLoading(false);
+            setRefreshing(false);
           });
+      };
+      
+      // Initial data load
+      useEffect(() => {
+        loadData();
       }, []);
 
       // Fetch scores periodically from ESPN
@@ -350,11 +358,24 @@
         <div className="p-4 space-y-6 max-w-7xl mx-auto">
           {/* Header */}
           <header className="text-center py-6 animate-fade-in">
-            <h1 className="text-4xl md:text-5xl font-bold flex items-center justify-center gap-3 drop-shadow-lg">
-              <span className="animate-trophy">🏆</span>
-              NFL Preseason Survivor Pool
-            </h1>
-            <p className="mt-2 text-lg md:text-xl">Track your league's preseason picks and draft order</p>
+            <div className="flex justify-between items-start mb-4">
+              <div></div>
+              <div>
+                <h1 className="text-4xl md:text-5xl font-bold flex items-center justify-center gap-3 drop-shadow-lg">
+                  <span className="animate-trophy">🏆</span>
+                  NFL Preseason Survivor Pool
+                </h1>
+                <p className="mt-2 text-lg md:text-xl">Track your league's preseason picks and draft order</p>
+              </div>
+              <button
+                onClick={loadData}
+                disabled={refreshing}
+                className={`p-2 rounded-full ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+                title="Refresh data"
+              >
+                <i className={`fas fa-sync-alt ${refreshing ? 'animate-rotate' : ''}`}></i>
+              </button>
+            </div>
             <div className="mt-4 text-sm text-purple-200">
               Last updated: {new Date(lastUpdated).toLocaleString()}
             </div>
