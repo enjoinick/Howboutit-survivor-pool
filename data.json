@@ -1,13 +1,13 @@
 {
   "managers": [
     {
-      "name": "Chris",
-      "teamLabel": "Hello Naber!",
-      "lastYearRank": 1,
+      "name": "Josh",
+      "teamLabel": "S K",
+      "lastYearRank": 2,
       "picks": [
         {
           "week": 1,
-          "team": "Tampa Bay Buccaneers",
+          "team": "Detroit Lions",
           "result": null
         },
         {
@@ -25,13 +25,13 @@
       "marginOfVictory": 0
     },
     {
-      "name": "Josh",
-      "teamLabel": "S K",
-      "lastYearRank": 2,
+      "name": "Chris",
+      "teamLabel": "Hello Naber!",
+      "lastYearRank": 1,
       "picks": [
         {
           "week": 1,
-          "team": "Detroit Lions",
+          "team": "Tampa Bay Buccaneers",
           "result": null
         },
         {
@@ -217,7 +217,7 @@
       "marginOfVictory": 0
     },
     {
-      "name": "William",
+      "name": "Will",
       "teamLabel": "Just Win Baby",
       "lastYearRank": 10,
       "picks": [
@@ -241,5 +241,5 @@
       "marginOfVictory": 0
     }
   ],
-  "lastUpdated": "2025-08-07T18:21:35.853Z"
+  "lastUpdated": "2025-08-07T15:44:45.136Z"
 }
