@@ -1,0 +1,254 @@
+{
+  "managers": [
+    {
+      "name": "Chris",
+      "teamLabel": "Hello Naber!",
+      "lastYearRank": 1,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Tampa Bay Buccaneers",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-07T19:20:25.592Z",
+          "margin": 0
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Josh",
+      "teamLabel": "S K",
+      "lastYearRank": 2,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Detroit Lions",
+          "result": null
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 10
+    },
+    {
+      "name": "Kevin",
+      "teamLabel": "Check My Balls",
+      "lastYearRank": 3,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Baltimore Ravens",
+          "result": null
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 10
+    },
+    {
+      "name": "Austin",
+      "teamLabel": "Honey Baked Lamb",
+      "lastYearRank": 4,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Carolina Panthers",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-07T19:12:09.114Z"
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Ryan",
+      "teamLabel": "Quail Man SWAG",
+      "lastYearRank": 5,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Cincinnati Bengals",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-07T19:11:59.434Z"
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Weston",
+      "teamLabel": "Robert DUUUVAL",
+      "lastYearRank": 6,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Jacksonville Jaguars",
+          "result": null
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 10
+    },
+    {
+      "name": "Jordan",
+      "teamLabel": "GRAVEDIGGER",
+      "lastYearRank": 7,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Cleveland Browns",
+          "result": null
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 10
+    },
+    {
+      "name": "Matt",
+      "teamLabel": "DELTA 8",
+      "lastYearRank": 8,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Houston Texans",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-07T19:12:03.130Z"
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 0
+    },
+    {
+      "name": "Nick",
+      "teamLabel": "Allen's Dirty Brown Kupp",
+      "lastYearRank": 9,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Las Vegas Raiders",
+          "result": null
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 10
+    },
+    {
+      "name": "William",
+      "teamLabel": "Just Win Baby",
+      "lastYearRank": 10,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Philadelphia Eagles",
+          "result": null
+        },
+        {
+          "week": 2,
+          "team": "",
+          "result": null
+        },
+        {
+          "week": 3,
+          "team": "",
+          "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 10
+    }
+  ],
+  "lastUpdated": "2025-08-07T19:20:25.592Z"
+}

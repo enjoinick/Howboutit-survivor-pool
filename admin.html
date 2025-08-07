@@ -168,7 +168,12 @@
       
       const handlePickChange = (managerIndex, weekIndex, value) => {
         const updatedManagers = [...managers];
-        updatedManagers[managerIndex].picks[weekIndex].team = value;
+        updatedManagers[managerIndex].picks[weekIndex] = {
+          ...updatedManagers[managerIndex].picks[weekIndex],
+          team: value,
+          manualResult: true, // Mark as manual when team is changed
+          lastUpdated: new Date().toISOString()
+        };
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
         
@@ -180,15 +185,20 @@
       
       const handleResultChange = (managerIndex, weekIndex, value) => {
         const updatedManagers = [...managers];
-        updatedManagers[managerIndex].picks[weekIndex].result = value;
+        updatedManagers[managerIndex].picks[weekIndex] = {
+          ...updatedManagers[managerIndex].picks[weekIndex],
+          result: value,
+          manualResult: true, // Mark as manual result
+          lastUpdated: new Date().toISOString()
+        };
         
-        // Update elimination status and margin of victory
+        // Update elimination status
         if (value === 'L') {
           updatedManagers[managerIndex].eliminated = true;
-        } else if (value === 'W') {
-          // For simplicity, we'll assume a fixed margin of 10 points
-          // In a real app, you would calculate this from actual game scores
-          updatedManagers[managerIndex].marginOfVictory += 10;
+        } else {
+          // Check if manager has any other losses
+          const hasLoss = updatedManagers[managerIndex].picks.some(p => p.result === 'L');
+          updatedManagers[managerIndex].eliminated = hasLoss;
         }
         
         setManagers(updatedManagers);
@@ -203,6 +213,33 @@
       const handleManagerInfoChange = (managerIndex, field, value) => {
         const updatedManagers = [...managers];
         updatedManagers[managerIndex][field] = field === 'lastYearRank' ? parseInt(value) : value;
+        setManagers(updatedManagers);
+        updateJsonData(updatedManagers);
+        
+        // Force a refresh to ensure data is updated
+        setTimeout(() => {
+          loadData();
+        }, 100);
+      };
+      
+      const handleMarginChange = (managerIndex, weekIndex, margin) => {
+        const updatedManagers = [...managers];
+        updatedManagers[managerIndex].picks[weekIndex] = {
+          ...updatedManagers[managerIndex].picks[weekIndex],
+          margin: margin,
+          manualResult: true, // Mark as manual when margin is changed
+          lastUpdated: new Date().toISOString()
+        };
+        
+        // Recalculate total margin of victory
+        let totalMargin = 0;
+        updatedManagers[managerIndex].picks.forEach(pick => {
+          if (pick.result === 'W' && pick.margin) {
+            totalMargin += pick.margin;
+          }
+        });
+        updatedManagers[managerIndex].marginOfVictory = totalMargin;
+        
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
         
@@ -259,6 +296,40 @@
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
         showNotification('Manager reset successfully', 'success');
+        
+        // Force a refresh to ensure data is updated
+        setTimeout(() => {
+          loadData();
+        }, 100);
+      };
+      
+      const resetPick = (managerIndex, weekIndex) => {
+        const updatedManagers = [...managers];
+        updatedManagers[managerIndex].picks[weekIndex] = {
+          ...updatedManagers[managerIndex].picks[weekIndex],
+          team: '',
+          result: null,
+          margin: 0,
+          manualResult: false,
+          lastUpdated: new Date().toISOString()
+        };
+        
+        // Recalculate total margin of victory
+        let totalMargin = 0;
+        updatedManagers[managerIndex].picks.forEach(pick => {
+          if (pick.result === 'W' && pick.margin) {
+            totalMargin += pick.margin;
+          }
+        });
+        updatedManagers[managerIndex].marginOfVictory = totalMargin;
+        
+        // Update elimination status
+        const hasLoss = updatedManagers[managerIndex].picks.some(p => p.result === 'L');
+        updatedManagers[managerIndex].eliminated = hasLoss;
+        
+        setManagers(updatedManagers);
+        updateJsonData(updatedManagers);
+        showNotification('Weekly pick reset successfully', 'success');
         
         // Force a refresh to ensure data is updated
         setTimeout(() => {
@@ -490,7 +561,7 @@
                     <h3 className="font-semibold text-purple-200">Weekly Picks</h3>
                     
                     {manager.picks.map((pick, weekIndex) => (
-                      <div key={weekIndex} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div key={weekIndex} className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div>
                           <label className="block text-sm mb-1">Week {pick.week} Team</label>
                           <select
@@ -516,6 +587,29 @@
                             <option value="W">Win</option>
                             <option value="L">Loss</option>
                           </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm mb-1">Margin</label>
+                          <input
+                            type="number"
+                            value={pick.margin || ''}
+                            onChange={(e) => handleMarginChange(managerIndex, weekIndex, parseInt(e.target.value) || 0)}
+                            className="w-full p-2 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            placeholder="Score diff"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm mb-1">Reset</label>
+                          <button
+                            onClick={() => resetPick(managerIndex, weekIndex)}
+                            className="w-full p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white transition-colors flex items-center justify-center gap-1"
+                            title="Reset this week's pick"
+                          >
+                            <i className="fas fa-undo"></i>
+                            Reset
+                          </button>
                         </div>
                       </div>
                     ))}
