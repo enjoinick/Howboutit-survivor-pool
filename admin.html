@@ -330,7 +330,10 @@
 
       // Save current jsonData to configured Gist
       const saveToGist = async () => {
-        if (!gistId || !gistToken) {
+        // Fallback to localStorage and trim before validation
+        const id = (gistId || localStorage.getItem('gistId') || '').trim();
+        const token = (gistToken || localStorage.getItem('gistToken') || '').trim();
+        if (!id || !token) {
           showNotification('Configure Gist ID and Token in Settings first', 'error');
           return;
         }
@@ -341,11 +344,11 @@
               'data.json': { content: jsonData }
             }
           };
-          const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+          const res = await fetch(`https://api.github.com/gists/${id}`, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `token ${gistToken}`
+              'Authorization': `token ${token}`
             },
             body: JSON.stringify(payload)
           });
@@ -365,8 +368,13 @@
 
       // Persist Settings to localStorage
       const saveSettings = () => {
-        localStorage.setItem('gistId', gistId.trim());
-        localStorage.setItem('gistToken', gistToken.trim());
+        const id = (gistId || '').trim();
+        const token = (gistToken || '').trim();
+        // Persist and update state immediately so Save to Gist can use them without reload
+        localStorage.setItem('gistId', id);
+        localStorage.setItem('gistToken', token);
+        setGistId(id);
+        setGistToken(token);
         setShowSettings(false);
         showNotification('Settings saved locally', 'success');
       };
