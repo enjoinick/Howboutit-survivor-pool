@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NFL Preseason Survivor Pool</title>
+  <title>HowBoutIt Preseason Survivor Pool</title>
   <meta name="description" content="NFL Preseason Survivor Pool — live picks, margins, and draft order.">
   <meta name="theme-color" content="#6d28d9">
   <link rel="manifest" href="manifest.webmanifest">
@@ -67,6 +67,18 @@
       animation: trophy 2s infinite;
       display: inline-block;
     }
+    /* Marquee for joke ticker */
+    @keyframes marquee {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    .ticker-track {
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+      white-space: nowrap;
+      will-change: transform;
+    }
+    .ticker-track:hover { animation-play-state: paused; }
     /* Glass effect */
     .glass {
       background: rgba(255, 255, 255, 0.1);
@@ -217,6 +229,9 @@
 
       // --- Easter Egg: Live Joke Ticker ---
       const [jokeIdx, setJokeIdx] = useState(0);
+      const tickerWrapRef = useRef(null);
+      const tickerTextRef = useRef(null);
+      const [tickerDuration, setTickerDuration] = useState(20); // seconds
       const jokes = useMemo(() => [
         "Chris (Hello Naber!) — Yo, Chris, 'Hello Naber'? Sounds like you’re tryin’ to flirt with the neighbor’s dog at the BBQ. Like, ‘Hey, Rover, you lookin’ fine in that flea collar, wanna split a Milk-Bone?’ Man, your team’s so soft, it’s like you drafted a roster full of participation trophies and vibes. Bet you’re startin’ a punter in Week 1, yellin’ ‘NABER!’ when he shanks it into the stands.",
         "Josh (S K) — Josh, what’s ‘S K’ stand for? Shitty Kickers? You out here draftin’ guys who miss 20-yard field goals like they’re blindfolded at a carnival game. I bet your team’s game plan is just ‘vibe and cry.’ You’re the dude who shows up to the draft with a Ouija board, tryna summon Tom Brady’s ghost, but all you get is a spectral fumble from Jake Delhomme.",
@@ -231,9 +246,27 @@
       ], []);
       useEffect(() => {
         if (!jokes.length) return;
-        const id = setInterval(() => setJokeIdx(i => (i + 1) % jokes.length), 7000);
+        const id = setInterval(() => setJokeIdx(i => (i + 1) % jokes.length), 12000);
         return () => clearInterval(id);
       }, [jokes.length]);
+
+      // Measure and set marquee speed: ~90px/sec for readability
+      useEffect(() => {
+        const compute = () => {
+          const wrap = tickerWrapRef.current;
+          const text = tickerTextRef.current;
+          if (!wrap || !text) return;
+          const wrapW = wrap.clientWidth || 1;
+          const textW = text.scrollWidth || wrapW;
+          const distance = wrapW + textW; // start off right, exit left
+          const pxPerSec = 90; // readable pace
+          const seconds = Math.max(8, Math.round(distance / pxPerSec));
+          setTickerDuration(seconds);
+        };
+        compute();
+        window.addEventListener('resize', compute);
+        return () => window.removeEventListener('resize', compute);
+      }, [jokeIdx]);
 
       // --- Helpers: calendar state from schedule dates ---
       const getWeekRange = (week) => {
@@ -820,9 +853,9 @@
           <header className="text-center py-6 animate-fade-in">
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold flex items-center justify-center gap-3 drop-shadow-lg">
               <span className="animate-trophy">🏆</span>
-              NFL Preseason Survivor Pool
+              HowBoutIt Preseason Survivor Pool
             </h1>
-            <p className="mt-2 text-base sm:text-lg md:text-xl">Track your league's preseason picks and draft order</p>
+            <p className="mt-2 text-base sm:text-lg md:text-xl">Who is going to get the #1 Fucking Pick?!</p>
             <div className="mt-2 text-xs text-purple-200">
               Times shown are Eastern Time. <span className="ml-1" aria-label="Manual override indicator">Manual overrides are marked with 📝.</span>
             </div>
@@ -831,7 +864,15 @@
           {/* Joke Ticker (Easter Egg) */}
           <div className="glass rounded-xl p-2 mb-4 flex items-center gap-2 text-sm animate-fade-in" aria-live="polite" aria-label="Live joke ticker">
             <span className="px-2 py-0.5 rounded-full bg-red-500/80 text-black text-xs font-bold">LIVE</span>
-            <div className="text-amber-200 overflow-hidden text-ellipsis whitespace-nowrap w-full" title={jokes[jokeIdx]}> {jokes[jokeIdx]} </div>
+            <div ref={tickerWrapRef} className="relative overflow-hidden w-full">
+              <div 
+                className="ticker-track text-amber-200"
+                style={{ animationName: 'marquee', animationDuration: `${tickerDuration}s` }}
+              >
+                <span ref={tickerTextRef} className="pr-10">{jokes[jokeIdx]}</span>
+                <span className="pr-10">{jokes[jokeIdx]}</span>
+              </div>
+            </div>
           </div>
 
           {/* Stats Overview */}
