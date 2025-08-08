@@ -215,6 +215,26 @@
       const saveDebounceRef = useRef(null);
       const lastSavedHashRef = useRef('');
 
+      // --- Easter Egg: Live Joke Ticker ---
+      const [jokeIdx, setJokeIdx] = useState(0);
+      const jokes = useMemo(() => [
+        "Chris (Hello Naber!) — Yo, Chris, 'Hello Naber'? Sounds like you’re tryin’ to flirt with the neighbor’s dog at the BBQ. Like, ‘Hey, Rover, you lookin’ fine in that flea collar, wanna split a Milk-Bone?’ Man, your team’s so soft, it’s like you drafted a roster full of participation trophies and vibes. Bet you’re startin’ a punter in Week 1, yellin’ ‘NABER!’ when he shanks it into the stands.",
+        "Josh (S K) — Josh, what’s ‘S K’ stand for? Shitty Kickers? You out here draftin’ guys who miss 20-yard field goals like they’re blindfolded at a carnival game. I bet your team’s game plan is just ‘vibe and cry.’ You’re the dude who shows up to the draft with a Ouija board, tryna summon Tom Brady’s ghost, but all you get is a spectral fumble from Jake Delhomme.",
+        "Kevin (Check My Balls) — Kevin, bro, ‘Check My Balls’? You sound like you’re one bad physical away from a malpractice lawsuit. Your team’s probably got more injuries than a Civil War reenactment gone wrong. Like, ‘Yo, doc, check my balls, I think I pulled something carryin’ this L.’ Bet you’re startin’ a third-string tight end who moonlights as an Uber driver. Keep it classy, Kev.",
+        "Austin (Honey Baked Lamb) — Austin, ‘Honey Baked Lamb’? What is this, a fantasy team or a hipster butcher shop? You out here servin’ artisanal losses with a side of kale. Bet your draft board’s just a charcuterie spread with Aaron Rodgers’ face carved in prosciutto.",
+        "Ryan (Quail Man SWAG) — Ryan, ‘Quail Man SWAG’? Bro, you’re reppin’ a deep-cut Doug Funnie reference like it’s 1996. Your team’s got the swag of a kid who brought a Capri Sun to prom. Bet you’re startin’ a backup RB who fumbles more than a drunk uncle at Thanksgiving.",
+        "Weston (Robert DUUUVAL) — Weston, you’re ridin’ for Jacksonville harder than a guy with a mullet and a Natty Light tattoo. Bet you’re prayin’ to the ghost of Blake Bortles to save your season.",
+        "Jordan (GRAVEDIGGER) — Jordan, the only thing you’re buryin’ is your playoff hopes. Your roster’s more like a 53-year-old accountant named Randy who pulled a hammy playin’ pickleball.",
+        "John (DELTA 8) — John, you sound like you drafted after hittin’ a gas-station vape. Your lineup’s got more gummies than touchdowns. Your WR1 retired in 2017 and you didn’t notice.",
+        "Nick (Allen’s Dirty Brown Kupp) — Nick, that name’s so filthy it gets flagged on Craigslist. You’re bankin’ on Cooper Kupp while your WR2 sells bootleg jerseys in Lot B.",
+        "William (Just Win Baby) — William, more like ‘Just Lose, Maybe.’ You’re quotin’ Al Davis while your QB throws four picks. Just win? Try just survivin’ the group chat roast."
+      ], []);
+      useEffect(() => {
+        if (!jokes.length) return;
+        const id = setInterval(() => setJokeIdx(i => (i + 1) % jokes.length), 7000);
+        return () => clearInterval(id);
+      }, [jokes.length]);
+
       // --- Helpers: calendar state from schedule dates ---
       const getWeekRange = (week) => {
         const start = new Date(week.games[0].date + 'T00:00:00');
@@ -807,6 +827,12 @@
               Times shown are Eastern Time. <span className="ml-1" aria-label="Manual override indicator">Manual overrides are marked with 📝.</span>
             </div>
           </header>
+
+          {/* Joke Ticker (Easter Egg) */}
+          <div className="glass rounded-xl p-2 mb-4 flex items-center gap-2 text-sm animate-fade-in" aria-live="polite" aria-label="Live joke ticker">
+            <span className="px-2 py-0.5 rounded-full bg-red-500/80 text-black text-xs font-bold">LIVE</span>
+            <div className="text-amber-200 overflow-hidden text-ellipsis whitespace-nowrap w-full" title={jokes[jokeIdx]}> {jokes[jokeIdx]} </div>
+          </div>
 
           {/* Stats Overview */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in">
