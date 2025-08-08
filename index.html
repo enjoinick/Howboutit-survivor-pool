@@ -204,7 +204,6 @@
       const [loading, setLoading] = useState(true);
       const [lastUpdated, setLastUpdated] = useState('');
       const [refreshing, setRefreshing] = useState(false);
-      const [query, setQuery] = useState('');
       const [expanded, setExpanded] = useState(new Set()); // which manager cards are expanded on mobile
       const [chartOpen, setChartOpen] = useState(false); // lazy render chart
       const initViewApplied = useRef(false);
@@ -409,10 +408,8 @@
         initViewApplied.current = true;
       }, [managers.length]);
 
-      const norm = (s) => (s || '').toLowerCase();
-      const filteredManagers = useMemo(() => orderedManagers.filter(m =>
-        norm(m.name).includes(norm(query)) || norm(m.teamLabel).includes(norm(query))
-      ), [orderedManagers, query]);
+      // No search/filtering — show all managers in draft order
+      const filteredManagers = orderedManagers;
 
       const toggleExpand = (name) => {
         setExpanded(prev => {
@@ -536,21 +533,9 @@
             className="sticky top-0 z-50 glass rounded-xl px-3 py-2 -mx-1 md:mx-0 backdrop-blur animate-fade-in"
             style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top))' }}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between gap-3">
               <div className="text-xs text-purple-200 whitespace-nowrap">
                 Last updated: {new Date(lastUpdated).toLocaleString()}
-              </div>
-              <div className="flex-1">
-                <label htmlFor="manager-search" className="sr-only">Search managers</label>
-                <input
-                  id="manager-search"
-                  aria-label="Search managers"
-                  type="search"
-                  placeholder="Search managers or teams..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="w-full p-2 md:p-2.5 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
               </div>
               <button
                 onClick={loadData}
@@ -662,7 +647,7 @@
                           title={`Week ${pick.week} - ${(pick.team || 'TBD')} - ${pick.result ? (pick.result === 'W' ? 'Win' : 'Loss') : 'Pending'}${pick.manualResult ? ' (Manual override)' : ''}`}
                         >
                           <span className="font-semibold">W{pick.week}</span>
-                          <span className="hidden sm:inline">{pick.team || 'TBD'}</span>
+                          <span className="inline">{pick.team || 'TBD'}</span>
                           {pick.result && (
                             <span className="font-bold">
                               {pick.result === 'W' ? '✓' : '✗'}
@@ -727,7 +712,8 @@
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
               <i className="fas fa-calendar-alt"></i> Preseason Schedule (Weeks 1–3)
             </h2>
-            <div className="overflow-x-auto">
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-purple-800/40">
                   <tr>
@@ -792,6 +778,40 @@
                 </tbody>
               </table>
             </div>
+            {/* Mobile cards */}
+            <div className="md:hidden space-y-3">
+              {preseasonSchedule.flatMap(week => 
+                week.games.map((game, idx) => {
+                  const teams = game.matchup.split(' at ');
+                  const awayTeam = teams[0];
+                  const homeTeam = teams[1];
+                  const managersWithPick = managers.filter(manager => {
+                    const pick = manager.picks.find(p => p.week === week.week);
+                    return pick && pick.team && (pick.team.trim() !== '' && (pick.team === awayTeam || pick.team === homeTeam));
+                  });
+                  return (
+                    <div key={`${week.week}-m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="font-semibold">{game.time} ET</div>
+                        <div className="text-xs text-purple-200">Week {week.week} • {game.date}</div>
+                      </div>
+                      <div className="mt-1 font-medium">
+                        {awayTeam} <span className="text-gray-400">@</span> {homeTeam}
+                      </div>
+                      {managersWithPick.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {managersWithPick.map((manager, mgrIdx) => (
+                            <span key={mgrIdx} className="px-2 py-0.5 rounded-full text-[11px] bg-green-500/60">{manager.name}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-gray-300 text-xs">No picks</div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </section>
 
           {/* Live Scoreboard Section */}
@@ -805,52 +825,85 @@
               )}
             </h2>
             {games && games.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-indigo-800/40">
-                    <tr>
-                      <th className="p-2 text-left">Matchup</th>
-                      <th className="p-2 text-center">Score</th>
-                      <th className="p-2 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {games.map((ev, idx) => {
-                      const comp = ev.competitions && ev.competitions[0];
-                      if (!comp) return null;
-                      const teams = comp.competitors;
-                      const home = teams.find(t => t.homeAway === 'home');
-                      const away = teams.find(t => t.homeAway === 'away');
-                      const statusDesc = ev.status && ev.status.type && ev.status.type.shortDetail;
-                      const isCompleted = ev.status && ev.status.type && ev.status.type.state === 'post';
-                      
-                      return (
-                        <tr key={idx} className={idx % 2 === 0 ? 'bg-indigo-700/30' : 'bg-indigo-700/20'}>
-                          <td className="p-2">
-                            <div className="flex items-center gap-2">
-                              <div>{away.team.displayName}</div>
-                              <div className="text-gray-400">@</div>
-                              <div>{home.team.displayName}</div>
-                            </div>
-                          </td>
-                          <td className="p-2 text-center font-mono">
-                            {away.score} – {home.score}
-                          </td>
-                          <td className="p-2 text-center">
-                            <span className={`px-2 py-1 rounded-full text-xs ${
-                              isCompleted 
-                                ? 'bg-green-500/80' 
-                                : 'bg-yellow-500/80'
-                            }`}>
-                              {statusDesc}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-indigo-800/40">
+                      <tr>
+                        <th className="p-2 text-left">Matchup</th>
+                        <th className="p-2 text-center">Score</th>
+                        <th className="p-2 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {games.map((ev, idx) => {
+                        const comp = ev.competitions && ev.competitions[0];
+                        if (!comp) return null;
+                        const teams = comp.competitors;
+                        const home = teams.find(t => t.homeAway === 'home');
+                        const away = teams.find(t => t.homeAway === 'away');
+                        const statusDesc = ev.status && ev.status.type && ev.status.type.shortDetail;
+                        const isCompleted = ev.status && ev.status.type && ev.status.type.state === 'post';
+                        
+                        return (
+                          <tr key={idx} className={idx % 2 === 0 ? 'bg-indigo-700/30' : 'bg-indigo-700/20'}>
+                            <td className="p-2">
+                              <div className="flex items-center gap-2">
+                                <div>{away.team.displayName}</div>
+                                <div className="text-gray-400">@</div>
+                                <div>{home.team.displayName}</div>
+                              </div>
+                            </td>
+                            <td className="p-2 text-center font-mono">
+                              {away.score} – {home.score}
+                            </td>
+                            <td className="p-2 text-center">
+                              <span className={`px-2 py-1 rounded-full text-xs ${
+                                isCompleted 
+                                  ? 'bg-green-500/80' 
+                                  : 'bg-yellow-500/80'
+                              }`}>
+                                {statusDesc}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Mobile cards */}
+                <div className="md:hidden space-y-3">
+                  {games.map((ev, idx) => {
+                    const comp = ev.competitions && ev.competitions[0];
+                    if (!comp) return null;
+                    const teams = comp.competitors;
+                    const home = teams.find(t => t.homeAway === 'home');
+                    const away = teams.find(t => t.homeAway === 'away');
+                    const statusDesc = ev.status && ev.status.type && ev.status.type.shortDetail;
+                    const isCompleted = ev.status && ev.status.type && ev.status.type.state === 'post';
+                    return (
+                      <div key={`m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
+                        <div className="flex items-center justify-between">
+                          <div className={`text-xs px-2 py-0.5 rounded-full text-black font-medium ${isCompleted ? 'bg-green-300' : 'bg-yellow-300'}`}>{statusDesc}</div>
+                        </div>
+                        <div className="mt-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium">{away.team.displayName}</span>
+                            <span className="font-mono">{away.score}</span>
+                          </div>
+                          <div className="text-center text-gray-400 text-xs">@</div>
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium">{home.team.displayName}</span>
+                            <span className="font-mono">{home.score}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             ) : (
               <div className="text-center py-8">
                 <i className="fas fa-info-circle text-3xl text-purple-300 mb-2"></i>
