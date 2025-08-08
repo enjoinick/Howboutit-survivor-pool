@@ -208,6 +208,7 @@
       const [chartOpen, setChartOpen] = useState(false); // lazy render chart
       const initViewApplied = useRef(false);
       const [openWeeks, setOpenWeeks] = useState(new Set()); // mobile: which schedule weeks are expanded
+      const joshAudioRef = useRef(null); // easter egg audio ref
 
       // --- Helpers: calendar state from schedule dates ---
       const getWeekRange = (week) => {
@@ -457,6 +458,17 @@
           return next;
         });
       };
+      const handleCardClick = (mgr) => {
+        if (!mgr || !mgr.name) return;
+        if (mgr.name.trim().toLowerCase() === 'josh' && joshAudioRef.current) {
+          try {
+            joshAudioRef.current.currentTime = 0;
+            joshAudioRef.current.play();
+          } catch (e) {
+            console.warn('Easter egg audio failed to play:', e);
+          }
+        }
+      };
       // Memoized calendar snapshot for renders
       const calendar = React.useMemo(() => computeCalendarState(preseasonSchedule), [preseasonSchedule, lastUpdated]);
       // Build data for bar chart
@@ -569,6 +581,8 @@
 
       return (
         <div className="p-4 space-y-6 max-w-7xl mx-auto">
+          {/* Easter egg audio (hidden) */}
+          <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="auto" style={{ display: 'none' }} />
           {/* Sticky Toolbar */}
           <div
             className="sticky top-0 z-50 glass rounded-xl px-3 py-2 -mx-1 md:mx-0 backdrop-blur animate-fade-in"
@@ -649,6 +663,7 @@
                 <div 
                   key={mgr.name} 
                   className={`glass rounded-2xl p-5 transition-all duration-300 transform hover:scale-[1.02] ${isEliminated ? 'eliminated' : ''} ${isWinner ? 'winner-glow' : ''} animate-fade-in`}
+                  onClick={() => handleCardClick(mgr)}
                   style={{ animationDelay: `${mgrIdx * 0.1}s` }}
                 >
                   <div className="flex justify-between items-start mb-2">
