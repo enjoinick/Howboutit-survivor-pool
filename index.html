@@ -414,6 +414,26 @@
         };
       }, [managers]);
 
+      // Map outcomes by team for elimination/margin derivation
+      const teamOutcomeMap = useMemo(() => {
+        const map = new Map();
+        if (!games || !games.length) return map;
+        games.forEach(ev => {
+          const comp = ev.competitions && ev.competitions[0];
+          if (!comp) return;
+          const teams = comp.competitors || [];
+          const home = teams.find(t => t.homeAway === 'home');
+          const away = teams.find(t => t.homeAway === 'away');
+          if (!home || !away) return;
+          const state = ev.status && ev.status.type && ev.status.type.state;
+          const homeScore = Number(home.score || 0);
+          const awayScore = Number(away.score || 0);
+          map.set(home.team.displayName, { state, isWinner: homeScore > awayScore, score: homeScore, oppScore: awayScore });
+          map.set(away.team.displayName, { state, isWinner: awayScore > homeScore, score: awayScore, oppScore: homeScore });
+        });
+        return map;
+      }, [games]);
+
       /**
        * Calculate elimination week and draft order
        */
