@@ -209,6 +209,11 @@
       const initViewApplied = useRef(false);
       const [openWeeks, setOpenWeeks] = useState(new Set()); // mobile: which schedule weeks are expanded
       const joshAudioRef = useRef(null); // easter egg audio ref
+      // Public auto-persist controls
+      const [autoPersist, setAutoPersist] = useState(localStorage.getItem('autoPersistEnabled') === 'true');
+      const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
+      const saveDebounceRef = useRef(null);
+      const lastSavedHashRef = useRef('');
 
       // --- Helpers: calendar state from schedule dates ---
       const getWeekRange = (week) => {
@@ -248,6 +253,12 @@
         } catch (e) {
           // no config found; will fall back below
         }
+        // Fallback to localStorage gistId if not in config
+        if (!gistId) {
+          const lsId = (localStorage.getItem('gistId') || '').trim();
+          if (lsId) gistId = lsId;
+        }
+        setGistIdState(gistId);
         // If gistId configured, try Gist first
         if (gistId) {
           try {
@@ -287,6 +298,11 @@
       useEffect(() => {
         loadData();
       }, []);
+
+      // Persist autoPersist preference locally
+      useEffect(() => {
+        localStorage.setItem('autoPersistEnabled', autoPersist ? 'true' : 'false');
+      }, [autoPersist]);
 
       // Fetch scores periodically from ESPN and calculate margins
       useEffect(() => {
@@ -401,23 +417,109 @@
       /**
        * Calculate elimination week and draft order
        */
-      function computeDraftOrder(managers) {
-        return managers.map(mgr => {
-          // Determine elimination week: find index of first L
-          const lossIndex = mgr.picks.findIndex(p => p.result === 'L');
-          const eliminationWeek = lossIndex >= 0 ? (lossIndex + 1) : 4;
-          return { ...mgr, eliminationWeek };
-        }).sort((a, b) => {
-          // Higher elimination week first
-          if (a.eliminationWeek !== b.eliminationWeek) return b.eliminationWeek - a.eliminationWeek;
-          // Higher margin of victory next (positive margins are better)
-          if (a.marginOfVictory !== b.marginOfVictory) return b.marginOfVictory - a.marginOfVictory;
-          // Last year's rank (smaller is better)
-          return a.lastYearRank - b.lastYearRank;
-        }).map((mgr, idx) => ({ ...mgr, draftOrder: idx + 1 }));
-      }
+      // Helper to derive elimination and week even if picks weren't persisted yet
+      const deriveElimination = (mgr) => {
+        // First, trust explicit losses if present
+        const lossPick = (mgr.picks || []).find(p => p.result === 'L');
+        if (lossPick) return { isEliminated: true, week: lossPick.week };
+        // Otherwise infer from live scores: a completed (post) game with a loss
+        for (const p of (mgr.picks || [])) {
+          if (!p.team) continue;
+          const outcome = teamOutcomeMap.get(p.team);
+          if (outcome && outcome.state === 'post' && !outcome.isWinner) {
+            return { isEliminated: true, week: p.week };
+          }
+        }
+        return { isEliminated: false, week: null };
+      };
 
-      const orderedManagers = useMemo(() => computeDraftOrder(managers), [managers]);
+      // Margin for a specific week, using stored pick.margin when present,
+      // otherwise derive from live scores (teamOutcomeMap). Positive when pick's team leads.
+      const getWeekMargin = (mgr, week) => {
+        if (!week) return 0;
+        const pick = (mgr.picks || []).find(p => p.week === week);
+        if (!pick) return 0;
+        if (typeof pick.margin === 'number') return pick.margin;
+        if (pick.team) {
+          const outcome = teamOutcomeMap.get(pick.team);
+          if (outcome) return outcome.score - outcome.oppScore;
+        }
+        return 0;
+      };
+
+      // Draft order per provided rules (live-reactive)
+      const computeDraftOrderLive = (mgrs) => {
+        const totalWeeks = preseasonSchedule.length || 0;
+        const withKeys = mgrs.map(mgr => {
+          const derived = deriveElimination(mgr);
+          const eliminationWeek = derived.isEliminated ? derived.week : (totalWeeks + 1); // survivors rank highest
+          const tieWeek = derived.isEliminated ? derived.week : totalWeeks; // for survivors, use last week margin
+          const weekMargin = getWeekMargin(mgr, tieWeek);
+          return { ...mgr, eliminationWeek, weekMargin };
+        });
+        return withKeys
+          .sort((a, b) => {
+            // 1) Later elimination week first (survivors have totalWeeks+1)
+            if (a.eliminationWeek !== b.eliminationWeek) return b.eliminationWeek - a.eliminationWeek;
+            // 2) Larger margin that week higher
+            if (a.weekMargin !== b.weekMargin) return b.weekMargin - a.weekMargin;
+            // 3) Better last year rank (smaller number is better)
+            return a.lastYearRank - b.lastYearRank;
+          })
+          .map((mgr, idx) => ({ ...mgr, draftOrder: idx + 1 }));
+      };
+
+      const orderedManagers = useMemo(() => computeDraftOrderLive(managers), [managers, games, preseasonSchedule]);
+
+      // Public-side Gist save (opt-in). Uses gistId from config/localStorage and gistToken from localStorage.
+      const saveToGistPublic = async (jsonStr) => {
+        const id = (gistIdState || localStorage.getItem('gistId') || '').trim();
+        const token = (localStorage.getItem('gistToken') || '').trim();
+        if (!id || !token) {
+          console.warn('Auto-save skipped: missing Gist credentials');
+          return;
+        }
+        try {
+          const payload = { files: { 'data.json': { content: jsonStr } } };
+          const res = await fetch(`https://api.github.com/gists/${id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `token ${token}`
+            },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) {
+            const t = await res.text();
+            throw new Error(`Gist save failed: ${res.status} ${t}`);
+          }
+          console.log('Auto-saved live results to Gist');
+        } catch (err) {
+          console.error('Auto-save to Gist failed:', err);
+        }
+      };
+
+      // Debounced auto-persist when managers change and toggle is enabled
+      useEffect(() => {
+        if (!autoPersist) return;
+        const id = (gistIdState || localStorage.getItem('gistId') || '').trim();
+        const token = (localStorage.getItem('gistToken') || '').trim();
+        if (!id || !token) return;
+        const payloadObj = { managers, lastUpdated: new Date().toISOString() };
+        const payloadStr = JSON.stringify(payloadObj, null, 2);
+        if (lastSavedHashRef.current === payloadStr) return;
+        if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+        saveDebounceRef.current = setTimeout(async () => {
+          await saveToGistPublic(payloadStr);
+          lastSavedHashRef.current = payloadStr;
+        }, 3000);
+        return () => {
+          if (saveDebounceRef.current) {
+            clearTimeout(saveDebounceRef.current);
+            saveDebounceRef.current = null;
+          }
+        };
+      }, [managers, autoPersist, gistIdState]);
       // Initialize mobile/desktop defaults for expansions and chart section ONCE after data loads
       useEffect(() => {
         if (initViewApplied.current) return;
@@ -476,6 +578,44 @@
         const wins = mgr.picks.filter(p => p.result === 'W').length;
         return { name: mgr.name, wins };
       }), [orderedManagers]);
+
+      // Map of scoreboard by matchup string and sorted events for display
+      const scoreboardMap = useMemo(() => {
+        const map = new Map();
+        if (!games || !games.length) return map;
+        games.forEach(ev => {
+          const comp = ev.competitions && ev.competitions[0];
+          if (!comp) return;
+          const teams = comp.competitors || [];
+          const home = teams.find(t => t.homeAway === 'home');
+          const away = teams.find(t => t.homeAway === 'away');
+          if (!home || !away) return;
+          const key = `${away.team.displayName} at ${home.team.displayName}`;
+          const state = ev.status && ev.status.type && ev.status.type.state;
+          map.set(key, {
+            state,
+            awayScore: Number(away.score || 0),
+            homeScore: Number(home.score || 0),
+            date: ev.date ? new Date(ev.date) : null,
+          });
+        });
+        return map;
+      }, [games]);
+
+      const gamesSorted = useMemo(() => {
+        if (!games || !games.length) return [];
+        const rank = (state) => state === 'in' ? 0 : (state === 'pre' ? 1 : 2);
+        return [...games].sort((a, b) => {
+          const sa = a.status && a.status.type && a.status.type.state;
+          const sb = b.status && b.status.type && b.status.type.state;
+          const ra = rank(sa);
+          const rb = rank(sb);
+          if (ra !== rb) return ra - rb;
+          const da = a.date ? new Date(a.date).getTime() : 0;
+          const db = b.date ? new Date(b.date).getTime() : 0;
+          return da - db;
+        });
+      }, [games]);
 
       // Chart.js reference
       const chartRef = useRef(null);
@@ -592,16 +732,28 @@
               <div className="text-xs text-purple-200 whitespace-nowrap">
                 Last updated: {new Date(lastUpdated).toLocaleString()}
               </div>
-              <button
-                onClick={loadData}
-                disabled={refreshing || loading}
-                aria-label="Refresh data"
-                aria-busy={refreshing}
-                className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
-                title="Refresh data"
-              >
-                <i className={`fas fa-sync-alt ${refreshing ? 'animate-rotate' : ''}`}></i>
-              </button>
+              <div className="flex items-center gap-3">
+                <label className="hidden sm:flex items-center gap-2 text-xs select-none" title="Automatically save live results to your configured Gist">
+                  <input
+                    type="checkbox"
+                    checked={autoPersist}
+                    onChange={(e) => setAutoPersist(e.target.checked)}
+                    aria-label="Enable auto-save to Gist"
+                    className="h-4 w-4 rounded border-purple-400 bg-transparent"
+                  />
+                  Auto-save to Gist
+                </label>
+                <button
+                  onClick={loadData}
+                  disabled={refreshing || loading}
+                  aria-label="Refresh data"
+                  aria-busy={refreshing}
+                  className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+                  title="Refresh data"
+                >
+                  <i className={`fas fa-sync-alt ${refreshing ? 'animate-rotate' : ''}`}></i>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -613,8 +765,7 @@
             </h1>
             <p className="mt-2 text-base sm:text-lg md:text-xl">Track your league's preseason picks and draft order</p>
             <div className="mt-2 text-xs text-purple-200">
-              Times shown are Eastern Time. Tiebreaker: total margin of victory across wins only.
-              <span className="ml-1" aria-label="Manual override indicator">Manual overrides are marked with 📝.</span>
+              Times shown are Eastern Time. <span className="ml-1" aria-label="Manual override indicator">Manual overrides are marked with 📝.</span>
             </div>
           </header>
 
@@ -625,11 +776,11 @@
               <div className="text-sm">Managers</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-green-400">{managers.filter(m => !m.eliminated).length}</div>
+              <div className="text-3xl font-bold text-green-400">{managers.filter(m => !deriveElimination(m).isEliminated).length}</div>
               <div className="text-sm">Still Alive</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-red-400">{managers.filter(m => m.eliminated).length}</div>
+              <div className="text-3xl font-bold text-red-400">{managers.filter(m => deriveElimination(m).isEliminated).length}</div>
               <div className="text-sm">Eliminated</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
@@ -638,10 +789,25 @@
             </div>
           </div>
 
+          {/* Draft Order Rules Legend */}
+          <section className="glass rounded-2xl p-4 text-sm text-purple-100 animate-fade-in">
+            <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+              <i className="fas fa-info-circle"></i> Draft Order Rules
+            </h2>
+            <ul className="list-disc pl-5 space-y-1">
+              <li><strong>Survivors first</strong>: Last manager standing gets #1 pick; other survivors follow (#2, #3, ...).</li>
+              <li><strong>Same-week elimination</strong>: Higher <em>margin of victory that week</em> ranks higher.</li>
+              <li><strong>Still tied</strong>: Higher <em>last year’s finish</em> ranks higher.</li>
+              <li><strong>If all eliminated same week</strong>: Use that week’s margin, then last year’s finish.</li>
+            </ul>
+          </section>
+
           {/* Manager Cards */}
           <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredManagers.map((mgr, mgrIdx) => {
-              const isEliminated = mgr.eliminated;
+              const derived = deriveElimination(mgr);
+              const eliminationWeekComputed = derived.isEliminated ? derived.week : mgr.eliminationWeek;
+              const isEliminated = derived.isEliminated;
               const isWinner = mgr.draftOrder === 1;
               const isOpen = expanded.has(mgr.name);
               const completedWeeks = calendar.completedWeeks || 0;
@@ -656,7 +822,7 @@
               } else if (!isEliminated && completedWeeks >= totalWeeks) {
                 footerText = `Survived all ${totalWeeks} weeks!`;
               } else {
-                footerText = `Eliminated W${mgr.eliminationWeek} • Record: ${winsToDate}-${lossesToDate}`;
+                footerText = `Eliminated W${eliminationWeekComputed} • Record: ${winsToDate}-${lossesToDate}`;
               }
               
               return (
@@ -736,7 +902,7 @@
                     <div className="text-sm">
                       {isEliminated ? (
                         <span className="text-red-400 font-medium flex items-center gap-1">
-                          <i className="fas fa-skull"></i> Eliminated Week {mgr.eliminationWeek}
+                          <i className="fas fa-skull"></i> Eliminated Week {eliminationWeekComputed}
                         </span>
                       ) : (
                         <span className="text-green-400 font-medium flex items-center gap-1">
@@ -799,6 +965,7 @@
                       const teams = game.matchup.split(' at ');
                       const awayTeam = teams[0];
                       const homeTeam = teams[1];
+                      const score = scoreboardMap.get(game.matchup);
                       
                       // Find managers who have picked either team for this week
                       const managersWithPick = managers.filter(manager => {
@@ -810,7 +977,7 @@
                         <tr key={`${week.week}-${idx}`} className={idx % 2 === 0 ? 'bg-purple-700/30' : 'bg-purple-700/20'}>
                           <td className="p-2 text-center">{week.week}</td>
                           <td className="p-2 text-center">{game.date}</td>
-                          <td className="p-2 text-center">{game.time}</td>
+                          <td className="p-2 text-center">{score && score.state === 'post' ? `Final ${score.awayScore}–${score.homeScore}` : `${game.time}`}</td>
                           <td className="p-2">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{awayTeam}</span>
@@ -825,8 +992,8 @@
                                   <span 
                                     key={mgrIdx}
                                     className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                      manager.eliminated 
-                                        ? 'bg-red-500/60' 
+                                      deriveElimination(manager).isEliminated
+                                        ? 'bg-red-500/60'
                                         : 'bg-green-500/60'
                                     }`}
                                     title={`${manager.name} - ${manager.teamLabel}`}
@@ -836,7 +1003,7 @@
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-gray-400 text-sm">None</span>
+                              <span className="text-gray-400 text-sm">No picks</span>
                             )}
                           </td>
                         </tr>
@@ -867,6 +1034,7 @@
                           const teams = game.matchup.split(' at ');
                           const awayTeam = teams[0];
                           const homeTeam = teams[1];
+                          const score = scoreboardMap.get(game.matchup);
                           const managersWithPick = managers.filter(manager => {
                             const pick = manager.picks.find(p => p.week === week.week);
                             return pick && pick.team && (pick.team.trim() !== '' && (pick.team === awayTeam || pick.team === homeTeam));
@@ -874,7 +1042,7 @@
                           return (
                             <div key={`${week.week}-m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
                               <div className="flex items-center justify-between text-sm">
-                                <div className="font-semibold">{game.time} ET</div>
+                                <div className="font-semibold">{score && score.state === 'post' ? `Final ${score.awayScore}–${score.homeScore}` : `${game.time} ET`}</div>
                                 <div className="text-xs text-purple-200">{game.date}</div>
                               </div>
                               <div className="mt-1 font-medium">
@@ -923,7 +1091,7 @@
                       </tr>
                     </thead>
                     <tbody>
-                      {games.map((ev, idx) => {
+                      {gamesSorted.map((ev, idx) => {
                         const comp = ev.competitions && ev.competitions[0];
                         if (!comp) return null;
                         const teams = comp.competitors;
@@ -961,7 +1129,7 @@
                 </div>
                 {/* Mobile cards */}
                 <div className="md:hidden space-y-3">
-                  {games.map((ev, idx) => {
+                  {gamesSorted.map((ev, idx) => {
                     const comp = ev.competitions && ev.competitions[0];
                     if (!comp) return null;
                     const teams = comp.competitors;
