@@ -920,7 +920,7 @@
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="text-sm">Margin:</span>
-                          <span className="font-bold">{mgr.marginOfVictory}</span>
+                          <span className="font-bold">{typeof mgr.weekMargin === 'number' ? mgr.weekMargin : 0}</span>
                         </div>
                       </div>
                     </div>
@@ -1064,19 +1064,23 @@
                           <td className="p-2">
                             {managersWithPick.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {managersWithPick.map((manager, mgrIdx) => (
-                                  <span 
-                                    key={mgrIdx}
-                                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                      deriveElimination(manager).isEliminated
-                                        ? 'bg-red-500/60'
-                                        : 'bg-green-500/60'
-                                    }`}
-                                    title={`${manager.name} - ${manager.teamLabel}`}
-                                  >
-                                    {manager.name}
-                                  </span>
-                                ))}
+                                {managersWithPick.map((manager, mgrIdx) => {
+                                  const pick = manager.picks.find(p => p.week === week.week);
+                                  const outcome = pick && pick.team ? teamOutcomeMap.get(pick.team) : null;
+                                  let cls = 'bg-gray-500/60';
+                                  if (outcome && outcome.state === 'post') {
+                                    cls = outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
+                                  }
+                                  return (
+                                    <span 
+                                      key={mgrIdx}
+                                      className={`px-2 py-1 rounded-full text-xs font-medium ${cls}`}
+                                      title={`${manager.name} - ${manager.teamLabel}`}
+                                    >
+                                      {manager.name}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             ) : (
                               <span className="text-gray-400 text-sm">No picks</span>
@@ -1126,9 +1130,17 @@
                               </div>
                               {managersWithPick.length > 0 ? (
                                 <div className="mt-2 flex flex-wrap gap-1">
-                                  {managersWithPick.map((manager, mgrIdx) => (
-                                    <span key={mgrIdx} className="px-2 py-0.5 rounded-full text-[11px] bg-green-500/60">{manager.name}</span>
-                                  ))}
+                                  {managersWithPick.map((manager, mgrIdx) => {
+                                    const pick = manager.picks.find(p => p.week === week.week);
+                                    const outcome = pick && pick.team ? teamOutcomeMap.get(pick.team) : null;
+                                    let cls = 'bg-gray-500/60';
+                                    if (outcome && outcome.state === 'post') {
+                                      cls = outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
+                                    }
+                                    return (
+                                      <span key={mgrIdx} className={`px-2 py-0.5 rounded-full text-[11px] ${cls}`}>{manager.name}</span>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <div className="mt-2 text-gray-300 text-xs">No picks</div>
