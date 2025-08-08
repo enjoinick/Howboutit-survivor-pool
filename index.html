@@ -68,13 +68,14 @@
       display: inline-block;
     }
     /* Marquee for joke ticker */
-    @keyframes marquee {
-      0% { transform: translateX(100%); }
-      100% { transform: translateX(-100%); }
+    /* Marquee using CSS variables for precise from/to offsets */
+    @keyframes marqueeVar {
+      0% { transform: translateX(var(--from, 100%)); }
+      100% { transform: translateX(var(--to, -100%)); }
     }
     .ticker-track {
       animation-timing-function: linear;
-      animation-iteration-count: infinite;
+      animation-fill-mode: forwards;
       white-space: nowrap;
       will-change: transform;
     }
@@ -250,31 +251,40 @@
         if (!len) return;
         setJokeIdx(i => (i + 1) % len);
       }, [jokes]);
-      // Advance to next joke only when one full marquee cycle completes
+      // Advance to next joke only when one full marquee cycle completes (end of single iteration)
       useEffect(() => {
         const el = tickerTrackRef.current;
         if (!el || !jokes.length) return;
-        const onIter = () => setJokeIdx(i => (i + 1) % jokes.length);
-        el.addEventListener('animationiteration', onIter);
-        return () => el.removeEventListener('animationiteration', onIter);
-      }, [jokes.length]);
-
-      // Measure and set marquee speed: ~90px/sec for readability
-      useEffect(() => {
-        const compute = () => {
-          const wrap = tickerWrapRef.current;
-          const text = tickerTextRef.current;
-          if (!wrap || !text) return;
-          const wrapW = wrap.clientWidth || 1;
-          const textW = text.scrollWidth || wrapW;
-          const distance = wrapW + textW; // start off right, exit left
-          const pxPerSec = 90; // readable pace
-          const seconds = Math.max(8, Math.round(distance / pxPerSec));
-          setTickerDuration(seconds);
+        const onEnd = () => setJokeIdx(i => (i + 1) % jokes.length);
+        el.addEventListener('animationend', onEnd);
+        // Safari legacy prefix fallback
+        el.addEventListener('webkitAnimationEnd', onEnd);
+        return () => {
+          el.removeEventListener('animationend', onEnd);
+          el.removeEventListener('webkitAnimationEnd', onEnd);
         };
-        compute();
-        window.addEventListener('resize', compute);
-        return () => window.removeEventListener('resize', compute);
+      }, [jokeIdx, jokes]);
+
+      // Measure and set marquee speed/offsets: ~90px/sec for readability. Restart only on joke change.
+      useEffect(() => {
+        const wrap = tickerWrapRef.current;
+        const text = tickerTextRef.current;
+        const track = tickerTrackRef.current;
+        if (!wrap || !text || !track) return;
+        const wrapW = wrap.clientWidth || 1;
+        const textW = text.scrollWidth || wrapW;
+        const distance = wrapW + textW + wrapW; // include overshoot to ensure full clear on mobile
+        const pxPerSec = 90; // readable pace
+        const seconds = Math.max(8, Math.round(distance / pxPerSec));
+        setTickerDuration(seconds);
+        // Set CSS variables and restart animation cleanly
+        track.style.setProperty('--from', `${wrapW}px`);
+        track.style.setProperty('--to', `-${textW + wrapW}px`);
+        track.style.animationName = 'none';
+        void track.offsetWidth; // reflow to reset animation
+        track.style.animationName = 'marqueeVar';
+        track.style.animationDuration = `${seconds}s`;
+        track.style.animationIterationCount = '1';
       }, [jokeIdx]);
 
       // --- Helpers: calendar state from schedule dates ---
@@ -886,10 +896,9 @@
                 ref={tickerTrackRef}
                 className="ticker-track text-amber-200"
                 key={jokeIdx}
-                style={{ animationName: 'marquee', animationDuration: `${tickerDuration}s` }}
+                style={{ animationName: 'marqueeVar', animationDuration: `${tickerDuration}s` }}
               >
                 <span ref={tickerTextRef} className="pr-10">{jokes[jokeIdx]}</span>
-                <span className="pr-10">{jokes[jokeIdx]}</span>
               </div>
             </div>
           </div>
