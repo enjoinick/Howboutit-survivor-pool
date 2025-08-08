@@ -4,6 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NFL Preseason Survivor Pool</title>
+  <meta name="description" content="NFL Preseason Survivor Pool — live picks, margins, and draft order.">
+  <meta name="theme-color" content="#6d28d9">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="icons/icon-192.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <!-- Tailwind CSS via Play CDN for rapid styling -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React and ReactDOM (development builds for easier debugging) -->
@@ -107,13 +114,22 @@
     .animate-rotate {
       animation: rotate 1s linear;
     }
+    /* Respect reduced motion preferences */
+    @media (prefers-reduced-motion: reduce) {
+      .animate-fade-in,
+      .animate-rotate,
+      .animate-pulse-slow,
+      .animate-trophy {
+        animation: none !important;
+      }
+    }
   </style>
 </head>
 <body class="min-h-screen text-white font-sans">
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, useMemo } = React;
     
     // Preseason schedule used for reference
     const preseasonSchedule = [
@@ -188,6 +204,10 @@
       const [loading, setLoading] = useState(true);
       const [lastUpdated, setLastUpdated] = useState('');
       const [refreshing, setRefreshing] = useState(false);
+      const [query, setQuery] = useState('');
+      const [expanded, setExpanded] = useState(new Set()); // which manager cards are expanded on mobile
+      const [chartOpen, setChartOpen] = useState(false); // lazy render chart
+      const initViewApplied = useRef(false);
       
       // Function to load data with cache-busting (prefers Gist via config.json)
       const loadData = async () => {
@@ -373,19 +393,53 @@
         }).map((mgr, idx) => ({ ...mgr, draftOrder: idx + 1 }));
       }
 
-      const orderedManagers = computeDraftOrder(managers);
+      const orderedManagers = useMemo(() => computeDraftOrder(managers), [managers]);
+      // Initialize mobile/desktop defaults for expansions and chart section ONCE after data loads
+      useEffect(() => {
+        if (initViewApplied.current) return;
+        if (managers.length === 0) return; // wait for first data load
+        const isDesktop = window.matchMedia('(min-width: 768px)').matches; // md breakpoint
+        if (isDesktop) {
+          setExpanded(new Set(managers.map(m => m.name)));
+          setChartOpen(true);
+        } else {
+          setExpanded(new Set());
+          setChartOpen(false);
+        }
+        initViewApplied.current = true;
+      }, [managers.length]);
+
+      const norm = (s) => (s || '').toLowerCase();
+      const filteredManagers = useMemo(() => orderedManagers.filter(m =>
+        norm(m.name).includes(norm(query)) || norm(m.teamLabel).includes(norm(query))
+      ), [orderedManagers, query]);
+
+      const toggleExpand = (name) => {
+        setExpanded(prev => {
+          const next = new Set(prev);
+          if (next.has(name)) next.delete(name); else next.add(name);
+          return next;
+        });
+      };
       // Build data for bar chart
-      const chartData = orderedManagers.map(mgr => {
+      const chartData = useMemo(() => orderedManagers.map(mgr => {
         const wins = mgr.picks.filter(p => p.result === 'W').length;
         return { name: mgr.name, wins };
-      });
+      }), [orderedManagers]);
 
       // Chart.js reference
       const chartRef = useRef(null);
       const chartInstance = useRef(null);
 
-      // Render or update the bar chart
+      // Render or update the bar chart (lazy when chartOpen)
       useEffect(() => {
+        if (!chartOpen) {
+          if (chartInstance.current) {
+            chartInstance.current.destroy();
+            chartInstance.current = null;
+          }
+          return;
+        }
         if (!chartRef.current || chartData.length === 0) return;
         const ctx = chartRef.current.getContext('2d');
         
@@ -462,7 +516,7 @@
             chartInstance.current = null;
           }
         };
-      }, [chartData, orderedManagers]);
+      }, [chartOpen, chartData, orderedManagers]);
 
       if (loading) {
         return (
@@ -477,31 +531,48 @@
 
       return (
         <div className="p-4 space-y-6 max-w-7xl mx-auto">
-          {/* Header */}
-          <header className="text-center py-6 animate-fade-in">
-            <div className="flex justify-between items-start mb-4">
-              <div></div>
-              <div>
-                <h1 className="text-4xl md:text-5xl font-bold flex items-center justify-center gap-3 drop-shadow-lg">
-                  <span className="animate-trophy">🏆</span>
-                  NFL Preseason Survivor Pool
-                </h1>
-                <p className="mt-2 text-lg md:text-xl">Track your league's preseason picks and draft order</p>
+          {/* Sticky Toolbar */}
+          <div
+            className="sticky top-0 z-50 glass rounded-xl px-3 py-2 -mx-1 md:mx-0 backdrop-blur animate-fade-in"
+            style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top))' }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="text-xs text-purple-200 whitespace-nowrap">
+                Last updated: {new Date(lastUpdated).toLocaleString()}
+              </div>
+              <div className="flex-1">
+                <label htmlFor="manager-search" className="sr-only">Search managers</label>
+                <input
+                  id="manager-search"
+                  aria-label="Search managers"
+                  type="search"
+                  placeholder="Search managers or teams..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="w-full p-2 md:p-2.5 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
               </div>
               <button
                 onClick={loadData}
                 disabled={refreshing || loading}
                 aria-label="Refresh data"
-                className={`p-2 rounded-full ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+                aria-busy={refreshing}
+                className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
                 title="Refresh data"
               >
                 <i className={`fas fa-sync-alt ${refreshing ? 'animate-rotate' : ''}`}></i>
               </button>
             </div>
-            <div className="mt-4 text-sm text-purple-200">
-              Last updated: {new Date(lastUpdated).toLocaleString()}
-            </div>
-            <div className="mt-1 text-xs text-purple-200">
+          </div>
+
+          {/* Header */}
+          <header className="text-center py-6 animate-fade-in">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold flex items-center justify-center gap-3 drop-shadow-lg">
+              <span className="animate-trophy">🏆</span>
+              NFL Preseason Survivor Pool
+            </h1>
+            <p className="mt-2 text-base sm:text-lg md:text-xl">Track your league's preseason picks and draft order</p>
+            <div className="mt-2 text-xs text-purple-200">
               Times shown are Eastern Time. Tiebreaker: total margin of victory across wins only.
               <span className="ml-1" aria-label="Manual override indicator">Manual overrides are marked with 📝.</span>
             </div>
@@ -529,9 +600,10 @@
 
           {/* Manager Cards */}
           <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {orderedManagers.map((mgr, mgrIdx) => {
+            {filteredManagers.map((mgr, mgrIdx) => {
               const isEliminated = mgr.eliminated;
               const isWinner = mgr.draftOrder === 1;
+              const isOpen = expanded.has(mgr.name);
               
               return (
                 <div 
@@ -539,7 +611,7 @@
                   className={`glass rounded-2xl p-5 transition-all duration-300 transform hover:scale-[1.02] ${isEliminated ? 'eliminated' : ''} ${isWinner ? 'winner-glow' : ''} animate-fade-in`}
                   style={{ animationDelay: `${mgrIdx * 0.1}s` }}
                 >
-                  <div className="flex justify-between items-start mb-4">
+                  <div className="flex justify-between items-start mb-2">
                     <div>
                       <div className="flex items-center gap-2">
                         <h2 className="text-xl font-bold">{mgr.name}</h2>
@@ -547,38 +619,50 @@
                       </div>
                       <p className="text-sm italic text-fuchsia-200">{mgr.teamLabel}</p>
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm">Draft Pick:</span>
-                        <span className={`font-bold text-lg ${isWinner ? 'text-yellow-300' : 'text-white'}`}>
-                          #{mgr.draftOrder}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm">Margin:</span>
-                        <span className="font-bold">{mgr.marginOfVictory}</span>
+                    <div className="flex items-start gap-2">
+                      <button
+                        onClick={() => toggleExpand(mgr.name)}
+                        aria-expanded={isOpen}
+                        aria-controls={`mgr-${mgrIdx}`}
+                        aria-label={`Toggle ${mgr.name} details`}
+                        className="md:hidden p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                        title="Toggle details"
+                      >
+                        <i className={`fas ${isOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                      </button>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm">Draft Pick:</span>
+                          <span className={`font-bold text-lg ${isWinner ? 'text-yellow-300' : 'text-white'}`}>
+                            #{mgr.draftOrder}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm">Margin:</span>
+                          <span className="font-bold">{mgr.marginOfVictory}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
                   
                   {/* Picks display */}
-                  <div className="mb-4">
+                  <div id={`mgr-${mgrIdx}`} className={`${isOpen ? 'block' : 'hidden'} md:block mb-4`}>
                     <h3 className="text-sm font-semibold mb-2 text-purple-200">Weekly Picks</h3>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1 sm:gap-2">
                       {mgr.picks.map((pick, idx) => (
                         <div
                           key={idx}
-                          className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+                          className={`px-2 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-medium flex items-center gap-1 whitespace-nowrap ${
                             pick.result === 'W'
                               ? 'bg-green-500/80'
                               : pick.result === 'L'
                                 ? 'bg-red-500/80'
                                 : 'bg-gray-700/60'
                           }`}
-                          title={pick.manualResult ? 'Manual result' : 'Automatic result'}
+                          title={`Week ${pick.week} - ${(pick.team || 'TBD')} - ${pick.result ? (pick.result === 'W' ? 'Win' : 'Loss') : 'Pending'}${pick.manualResult ? ' (Manual override)' : ''}`}
                         >
-                          <span>Wk {pick.week}:</span>
-                          <span>{pick.team || 'TBD'}</span>
+                          <span className="font-semibold">W{pick.week}</span>
+                          <span className="hidden sm:inline">{pick.team || 'TBD'}</span>
                           {pick.result && (
                             <span className="font-bold">
                               {pick.result === 'W' ? '✓' : '✗'}
@@ -593,7 +677,7 @@
                   </div>
                   
                   {/* Status indicator */}
-                  <div className="flex justify-between items-center mt-2 pt-3 border-t border-white/10">
+                  <div className={`${isOpen ? 'flex' : 'hidden'} md:flex justify-between items-center mt-2 pt-3 border-t border-white/10`}>
                     <div className="text-sm">
                       {isEliminated ? (
                         <span className="text-red-400 font-medium flex items-center gap-1">
@@ -616,12 +700,26 @@
 
           {/* Chart Section */}
           <section className="glass rounded-2xl p-5 animate-fade-in">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <i className="fas fa-chart-bar"></i> Survival Progress
-            </h2>
-            <div className="relative h-64">
-              <canvas ref={chartRef} className="w-full h-full" />
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <i className="fas fa-chart-bar"></i> Survival Progress
+              </h2>
+              <button
+                onClick={() => setChartOpen(o => !o)}
+                aria-expanded={chartOpen}
+                aria-controls="survival-chart"
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                aria-label="Toggle survival progress chart"
+              >
+                <span className="hidden sm:inline">{chartOpen ? 'Hide' : 'Show'}</span>
+                <i className={`sm:ml-2 fas ${chartOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+              </button>
             </div>
+            {chartOpen && (
+              <div id="survival-chart" className="relative h-64">
+                <canvas ref={chartRef} className="w-full h-full" />
+              </div>
+            )}
           </section>
 
           {/* Preseason Schedule */}
@@ -761,6 +859,18 @@
             )}
           </section>
 
+          {/* Mobile Refresh FAB */}
+          <button
+            onClick={loadData}
+            disabled={refreshing || loading}
+            aria-label="Refresh data"
+            aria-busy={refreshing}
+            className={`sm:hidden fixed right-[calc(1rem+env(safe-area-inset-right))] bottom-[calc(1rem+env(safe-area-inset-bottom))] p-4 rounded-full shadow-lg ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+            title="Refresh data"
+          >
+            <i className={`fas fa-sync-alt ${refreshing ? 'animate-rotate' : ''}`}></i>
+          </button>
+
           {/* Footer */}
           <footer className="text-center py-6 text-sm text-purple-300 border-t border-white/10">
             <p>NFL Preseason Survivor Pool • Draft order determined by survival and margin of victory</p>
@@ -771,6 +881,16 @@
     }
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+  <script>
+    // Register service worker for PWA installability and offline fallback
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) => {
+          console.warn('Service worker registration failed:', err);
+        });
+      });
+    }
   </script>
 </body>
 </html>
