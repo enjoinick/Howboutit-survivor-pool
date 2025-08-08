@@ -222,6 +222,8 @@
       const initViewApplied = useRef(false);
       const [openWeeks, setOpenWeeks] = useState(new Set()); // mobile: which schedule weeks are expanded
       const joshAudioRef = useRef(null); // easter egg audio ref
+      const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan (GRAVEDIGGER)
+      const westonAudioRef = useRef(null); // easter egg audio ref for Weston (DUUUVALL)
       // Public auto-persist controls
       const [autoPersist, setAutoPersist] = useState(localStorage.getItem('autoPersistEnabled') === 'true');
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
@@ -265,7 +267,7 @@
         };
       }, [jokeIdx, jokes]);
 
-      // Measure and set marquee speed/offsets: ~90px/sec for readability. Restart only on joke change.
+      // Measure and set marquee speed/offsets. Start visible and show each joke twice (via duplicate span) before advancing.
       useEffect(() => {
         const wrap = tickerWrapRef.current;
         const text = tickerTextRef.current;
@@ -273,18 +275,56 @@
         if (!wrap || !text || !track) return;
         const wrapW = wrap.clientWidth || 1;
         const textW = text.scrollWidth || wrapW;
-        const distance = wrapW + textW + wrapW; // include overshoot to ensure full clear on mobile
-        const pxPerSec = 90; // readable pace
-        const seconds = Math.max(8, Math.round(distance / pxPerSec));
+        // Start with text visible (from=0) and scroll exactly one copy width; duplicate span ensures seamless loop.
+        const distance = textW; // one full visible pass equals first span width (includes its padding)
+        const pxPerSec = 140; // faster to avoid sluggish first pass
+        const rawSeconds = distance / pxPerSec;
+        const seconds = Math.min(14, Math.max(6, rawSeconds)); // clamp speed tighter
         setTickerDuration(seconds);
         // Set CSS variables and restart animation cleanly
-        track.style.setProperty('--from', `${wrapW}px`);
-        track.style.setProperty('--to', `-${textW + wrapW}px`);
+        track.style.setProperty('--from', `0px`);
+        track.style.setProperty('--to', `-${textW}px`);
         track.style.animationName = 'none';
         void track.offsetWidth; // reflow to reset animation
         track.style.animationName = 'marqueeVar';
         track.style.animationDuration = `${seconds}s`;
-        track.style.animationIterationCount = '1';
+        track.style.animationIterationCount = '2'; // two iterations => two full passes
+      }, [jokeIdx]);
+
+      // After web fonts load, re-measure and restart if width changed significantly (fixes slow/early cutoff on first load)
+      useEffect(() => {
+        let cancelled = false;
+        const wrap = tickerWrapRef.current;
+        const text = tickerTextRef.current;
+        const track = tickerTrackRef.current;
+        if (!wrap || !text || !track) return;
+        const initialW = text.scrollWidth || 1;
+        const recompute = () => {
+          if (cancelled) return;
+          const newW = text.scrollWidth || 1;
+          const delta = Math.abs(newW - initialW);
+          if (delta / Math.max(1, initialW) < 0.05) return; // <5% change: ignore
+          const pxPerSec = 140;
+          const rawSeconds = newW / pxPerSec;
+          const seconds = Math.min(14, Math.max(6, rawSeconds));
+          setTickerDuration(seconds);
+          track.style.setProperty('--from', `0px`);
+          track.style.setProperty('--to', `-${newW}px`);
+          track.style.animationName = 'none';
+          void track.offsetWidth;
+          track.style.animationName = 'marqueeVar';
+          track.style.animationDuration = `${seconds}s`;
+          track.style.animationIterationCount = '2';
+        };
+        // If browser supports font loading API
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(recompute);
+        } else {
+          // Fallback: wait a tick and re-measure once
+          const tid = setTimeout(recompute, 600);
+          return () => { cancelled = true; clearTimeout(tid); };
+        }
+        return () => { cancelled = true; };
       }, [jokeIdx]);
 
       // --- Helpers: calendar state from schedule dates ---
@@ -663,11 +703,44 @@
         if (!mgr || !mgr.name) return;
         if (mgr.name.trim().toLowerCase() === 'josh' && joshAudioRef.current) {
           try {
+            // stop other audio if playing
+            if (jordanAudioRef.current) jordanAudioRef.current.pause();
+            if (westonAudioRef.current) westonAudioRef.current.pause();
             joshAudioRef.current.currentTime = 0;
             joshAudioRef.current.play();
           } catch (e) {
             console.warn('Easter egg audio failed to play:', e);
           }
+          return;
+        }
+        // Weston easter egg: trigger on name or team label containing "DUUUVALL"
+        const isWeston = mgr.name.trim().toLowerCase() === 'weston';
+        const labelLower = (mgr.teamLabel || '').trim().toLowerCase();
+        const isDuuuval = labelLower.includes('duuuval');
+        if ((isWeston || isDuuuval) && westonAudioRef.current) {
+          try {
+            if (joshAudioRef.current) joshAudioRef.current.pause();
+            if (jordanAudioRef.current) jordanAudioRef.current.pause();
+            westonAudioRef.current.currentTime = 0;
+            westonAudioRef.current.play();
+          } catch (e) {
+            console.warn('Weston easter egg audio failed to play:', e);
+          }
+          return;
+        }
+        // Jordan easter egg: trigger on name or team label "GRAVEDIGGER"
+        const isJordan = mgr.name.trim().toLowerCase() === 'jordan';
+        const isGraveDigger = (mgr.teamLabel || '').trim().toLowerCase() === 'gravedigger';
+        if ((isJordan || isGraveDigger) && jordanAudioRef.current) {
+          try {
+            if (joshAudioRef.current) joshAudioRef.current.pause();
+            if (westonAudioRef.current) westonAudioRef.current.pause();
+            jordanAudioRef.current.currentTime = 0;
+            jordanAudioRef.current.play();
+          } catch (e) {
+            console.warn('Jordan easter egg audio failed to play:', e);
+          }
+          return;
         }
       };
       // Memoized calendar snapshot for renders
@@ -834,6 +907,8 @@
         <div className="p-4 space-y-6 max-w-7xl mx-auto">
           {/* Easter egg audio (hidden) */}
           <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="auto" style={{ display: 'none' }} />
+          <audio ref={jordanAudioRef} src="Audio/GraveDigger.mp3" preload="auto" style={{ display: 'none' }} />
+          <audio ref={westonAudioRef} src="Audio/Duuuval.mp3" preload="auto" style={{ display: 'none' }} />
           {/* Sticky Toolbar */}
           <div
             className="sticky top-0 z-50 glass rounded-xl px-3 py-2 -mx-1 md:mx-0 backdrop-blur animate-fade-in"
@@ -899,6 +974,7 @@
                 style={{ animationName: 'marqueeVar', animationDuration: `${tickerDuration}s` }}
               >
                 <span ref={tickerTextRef} className="pr-10">{jokes[jokeIdx]}</span>
+                <span className="pr-10">{jokes[jokeIdx]}</span>
               </div>
             </div>
           </div>
