@@ -230,10 +230,9 @@
       const saveDebounceRef = useRef(null);
       const lastSavedHashRef = useRef('');
 
-      // --- Easter Egg: Live Joke Ticker ---
-      const [jokeIdx, setJokeIdx] = useState(0);
+      // --- Easter Egg: Live Joke Ticker (continuous stream) ---
       const tickerWrapRef = useRef(null);
-      const tickerTextRef = useRef(null);
+      const tickerTextRef = useRef(null); // first copy of stream for measurement
       const tickerTrackRef = useRef(null);
       const [tickerDuration, setTickerDuration] = useState(20); // seconds
       const jokes = useMemo(() => [
@@ -248,50 +247,39 @@
         "Nick (Allen’s Dirty Brown Kupp) — Nick, that name’s so filthy it gets flagged on Craigslist. You’re bankin’ on Cooper Kupp while your WR2 sells bootleg jerseys in Lot B.",
         "William (Just Win Baby) — William, more like ‘Just Lose, Maybe.’ You’re quotin’ Al Davis while your QB throws four picks. Just win? Try just survivin’ the group chat roast."
       ], []);
-      const nextJoke = React.useCallback(() => {
-        const len = Array.isArray(jokes) ? jokes.length : 0;
-        if (!len) return;
-        setJokeIdx(i => (i + 1) % len);
+      // Build continuous stream (initially in given order); click will reshuffle
+      const [streamJokes, setStreamJokes] = useState([]);
+      useEffect(() => { setStreamJokes(jokes); }, [jokes]);
+      const reshuffleStream = React.useCallback(() => {
+        const arr = [...jokes];
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+        }
+        setStreamJokes(arr);
       }, [jokes]);
-      // Advance to next joke only when one full marquee cycle completes (end of single iteration)
-      useEffect(() => {
-        const el = tickerTrackRef.current;
-        if (!el || !jokes.length) return;
-        const onEnd = () => setJokeIdx(i => (i + 1) % jokes.length);
-        el.addEventListener('animationend', onEnd);
-        // Safari legacy prefix fallback
-        el.addEventListener('webkitAnimationEnd', onEnd);
-        return () => {
-          el.removeEventListener('animationend', onEnd);
-          el.removeEventListener('webkitAnimationEnd', onEnd);
-        };
-      }, [jokeIdx, jokes]);
 
-      // Measure and set marquee speed/offsets. Start visible and show each joke twice (via duplicate span) before advancing.
+      // Measure and set marquee speed/offsets for continuous stream; infinite animation over full content width
       useEffect(() => {
         const wrap = tickerWrapRef.current;
         const text = tickerTextRef.current;
         const track = tickerTrackRef.current;
         if (!wrap || !text || !track) return;
-        const wrapW = wrap.clientWidth || 1;
-        const textW = text.scrollWidth || wrapW;
-        // Start with text visible (from=0) and scroll exactly one copy width; duplicate span ensures seamless loop.
-        const distance = textW; // one full visible pass equals first span width (includes its padding)
-        const pxPerSec = 140; // faster to avoid sluggish first pass
-        const rawSeconds = distance / pxPerSec;
-        const seconds = Math.min(14, Math.max(6, rawSeconds)); // clamp speed tighter
+        const contentW = text.scrollWidth || 1; // width of one full stream copy
+        const pxPerSec = 120; // readable pace
+        const rawSeconds = contentW / pxPerSec;
+        const seconds = Math.min(30, Math.max(10, rawSeconds));
         setTickerDuration(seconds);
-        // Set CSS variables and restart animation cleanly
         track.style.setProperty('--from', `0px`);
-        track.style.setProperty('--to', `-${textW}px`);
+        track.style.setProperty('--to', `-${contentW}px`);
         track.style.animationName = 'none';
-        void track.offsetWidth; // reflow to reset animation
+        void track.offsetWidth;
         track.style.animationName = 'marqueeVar';
         track.style.animationDuration = `${seconds}s`;
-        track.style.animationIterationCount = '2'; // two iterations => two full passes
-      }, [jokeIdx]);
+        track.style.animationIterationCount = 'infinite';
+      }, [streamJokes]);
 
-      // After web fonts load, re-measure and restart if width changed significantly (fixes slow/early cutoff on first load)
+      // After web fonts load, re-measure and restart if width changed significantly
       useEffect(() => {
         let cancelled = false;
         const wrap = tickerWrapRef.current;
@@ -304,9 +292,9 @@
           const newW = text.scrollWidth || 1;
           const delta = Math.abs(newW - initialW);
           if (delta / Math.max(1, initialW) < 0.05) return; // <5% change: ignore
-          const pxPerSec = 140;
+          const pxPerSec = 120;
           const rawSeconds = newW / pxPerSec;
-          const seconds = Math.min(14, Math.max(6, rawSeconds));
+          const seconds = Math.min(30, Math.max(10, rawSeconds));
           setTickerDuration(seconds);
           track.style.setProperty('--from', `0px`);
           track.style.setProperty('--to', `-${newW}px`);
@@ -314,7 +302,7 @@
           void track.offsetWidth;
           track.style.animationName = 'marqueeVar';
           track.style.animationDuration = `${seconds}s`;
-          track.style.animationIterationCount = '2';
+          track.style.animationIterationCount = 'infinite';
         };
         // If browser supports font loading API
         if (document.fonts && document.fonts.ready) {
@@ -325,7 +313,7 @@
           return () => { cancelled = true; clearTimeout(tid); };
         }
         return () => { cancelled = true; };
-      }, [jokeIdx]);
+      }, [streamJokes]);
 
       // --- Helpers: calendar state from schedule dates ---
       const getWeekRange = (week) => {
@@ -961,20 +949,29 @@
             <div 
               ref={tickerWrapRef} 
               className="relative overflow-hidden w-full cursor-pointer"
-              onClick={nextJoke}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nextJoke(); } }}
+              onClick={reshuffleStream}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reshuffleStream(); } }}
               role="button"
               tabIndex={0}
-              title="Click to show next joke"
+              title="Click to reshuffle jokes"
             >
               <div 
                 ref={tickerTrackRef}
                 className="ticker-track text-amber-200"
-                key={jokeIdx}
                 style={{ animationName: 'marqueeVar', animationDuration: `${tickerDuration}s` }}
               >
-                <span ref={tickerTextRef} className="pr-10">{jokes[jokeIdx]}</span>
-                <span className="pr-10">{jokes[jokeIdx]}</span>
+                {/* First copy (measured) */}
+                <span ref={tickerTextRef} className="inline-flex items-center">
+                  {streamJokes.map((j, idx) => (
+                    <span key={`a${idx}`} className="pr-10">{j}</span>
+                  ))}
+                </span>
+                {/* Second copy for seamless loop */}
+                <span className="inline-flex items-center">
+                  {streamJokes.map((j, idx) => (
+                    <span key={`b${idx}`} className="pr-10">{j}</span>
+                  ))}
+                </span>
               </div>
             </div>
           </div>
