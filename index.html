@@ -231,7 +231,11 @@
       const [jokeIdx, setJokeIdx] = useState(0);
       const tickerWrapRef = useRef(null);
       const tickerTextRef = useRef(null);
+      const tickerTrackRef = useRef(null);
       const [tickerDuration, setTickerDuration] = useState(20); // seconds
+      const nextJoke = React.useCallback(() => {
+        setJokeIdx(i => (i + 1) % jokes.length);
+      }, [jokes.length]);
       const jokes = useMemo(() => [
         "Chris (Hello Naber!) — Yo, Chris, 'Hello Naber'? Sounds like you’re tryin’ to flirt with the neighbor’s dog at the BBQ. Like, ‘Hey, Rover, you lookin’ fine in that flea collar, wanna split a Milk-Bone?’ Man, your team’s so soft, it’s like you drafted a roster full of participation trophies and vibes. Bet you’re startin’ a punter in Week 1, yellin’ ‘NABER!’ when he shanks it into the stands.",
         "Josh (S K) — Josh, what’s ‘S K’ stand for? Shitty Kickers? You out here draftin’ guys who miss 20-yard field goals like they’re blindfolded at a carnival game. I bet your team’s game plan is just ‘vibe and cry.’ You’re the dude who shows up to the draft with a Ouija board, tryna summon Tom Brady’s ghost, but all you get is a spectral fumble from Jake Delhomme.",
@@ -244,10 +248,13 @@
         "Nick (Allen’s Dirty Brown Kupp) — Nick, that name’s so filthy it gets flagged on Craigslist. You’re bankin’ on Cooper Kupp while your WR2 sells bootleg jerseys in Lot B.",
         "William (Just Win Baby) — William, more like ‘Just Lose, Maybe.’ You’re quotin’ Al Davis while your QB throws four picks. Just win? Try just survivin’ the group chat roast."
       ], []);
+      // Advance to next joke only when one full marquee cycle completes
       useEffect(() => {
-        if (!jokes.length) return;
-        const id = setInterval(() => setJokeIdx(i => (i + 1) % jokes.length), 12000);
-        return () => clearInterval(id);
+        const el = tickerTrackRef.current;
+        if (!el || !jokes.length) return;
+        const onIter = () => setJokeIdx(i => (i + 1) % jokes.length);
+        el.addEventListener('animationiteration', onIter);
+        return () => el.removeEventListener('animationiteration', onIter);
       }, [jokes.length]);
 
       // Measure and set marquee speed: ~90px/sec for readability
@@ -864,9 +871,19 @@
           {/* Joke Ticker (Easter Egg) */}
           <div className="glass rounded-xl p-2 mb-4 flex items-center gap-2 text-sm animate-fade-in" aria-live="polite" aria-label="Live joke ticker">
             <span className="px-2 py-0.5 rounded-full bg-red-500/80 text-black text-xs font-bold">LIVE</span>
-            <div ref={tickerWrapRef} className="relative overflow-hidden w-full">
+            <div 
+              ref={tickerWrapRef} 
+              className="relative overflow-hidden w-full cursor-pointer"
+              onClick={nextJoke}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nextJoke(); } }}
+              role="button"
+              tabIndex={0}
+              title="Click to show next joke"
+            >
               <div 
+                ref={tickerTrackRef}
                 className="ticker-track text-amber-200"
+                key={jokeIdx}
                 style={{ animationName: 'marquee', animationDuration: `${tickerDuration}s` }}
               >
                 <span ref={tickerTextRef} className="pr-10">{jokes[jokeIdx]}</span>
