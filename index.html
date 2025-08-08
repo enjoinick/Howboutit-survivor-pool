@@ -207,6 +207,7 @@
       const [expanded, setExpanded] = useState(new Set()); // which manager cards are expanded on mobile
       const [chartOpen, setChartOpen] = useState(false); // lazy render chart
       const initViewApplied = useRef(false);
+      const [openWeeks, setOpenWeeks] = useState(new Set()); // mobile: which schedule weeks are expanded
       
       // Function to load data with cache-busting (prefers Gist via config.json)
       const loadData = async () => {
@@ -408,6 +409,13 @@
         initViewApplied.current = true;
       }, [managers.length]);
 
+      // Initialize mobile schedule week groups as open by default once schedule is loaded
+      useEffect(() => {
+        if (preseasonSchedule && preseasonSchedule.length) {
+          setOpenWeeks(new Set(preseasonSchedule.map(w => w.week)));
+        }
+      }, [preseasonSchedule]);
+
       // No search/filtering — show all managers in draft order
       const filteredManagers = orderedManagers;
 
@@ -415,6 +423,13 @@
         setExpanded(prev => {
           const next = new Set(prev);
           if (next.has(name)) next.delete(name); else next.add(name);
+          return next;
+        });
+      };
+      const toggleWeek = (weekNum) => {
+        setOpenWeeks(prev => {
+          const next = new Set(prev);
+          if (next.has(weekNum)) next.delete(weekNum); else next.add(weekNum);
           return next;
         });
       };
@@ -647,7 +662,7 @@
                           title={`Week ${pick.week} - ${(pick.team || 'TBD')} - ${pick.result ? (pick.result === 'W' ? 'Win' : 'Loss') : 'Pending'}${pick.manualResult ? ' (Manual override)' : ''}`}
                         >
                           <span className="font-semibold">W{pick.week}</span>
-                          <span className="inline">{pick.team || 'TBD'}</span>
+                          <span className="inline max-w-[10rem] truncate sm:max-w-none" title={pick.team || 'TBD'}>{pick.team || 'TBD'}</span>
                           {pick.result && (
                             <span className="font-bold">
                               {pick.result === 'W' ? '✓' : '✗'}
@@ -778,39 +793,57 @@
                 </tbody>
               </table>
             </div>
-            {/* Mobile cards */}
+            {/* Mobile grouped by week with toggles */}
             <div className="md:hidden space-y-3">
-              {preseasonSchedule.flatMap(week => 
-                week.games.map((game, idx) => {
-                  const teams = game.matchup.split(' at ');
-                  const awayTeam = teams[0];
-                  const homeTeam = teams[1];
-                  const managersWithPick = managers.filter(manager => {
-                    const pick = manager.picks.find(p => p.week === week.week);
-                    return pick && pick.team && (pick.team.trim() !== '' && (pick.team === awayTeam || pick.team === homeTeam));
-                  });
-                  return (
-                    <div key={`${week.week}-m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="font-semibold">{game.time} ET</div>
-                        <div className="text-xs text-purple-200">Week {week.week} • {game.date}</div>
+              {preseasonSchedule.map(week => {
+                const isOpen = openWeeks.has(week.week);
+                return (
+                  <div key={`week-${week.week}`} className="rounded-xl bg-indigo-900/20">
+                    <button
+                      onClick={() => toggleWeek(week.week)}
+                      className="w-full flex items-center justify-between p-3"
+                      aria-expanded={isOpen}
+                      aria-controls={`week-${week.week}-games`}
+                    >
+                      <span className="font-semibold">Week {week.week}</span>
+                      <i className={`fas ${isOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                    </button>
+                    {isOpen && (
+                      <div id={`week-${week.week}-games`} className="px-3 pb-3 space-y-2">
+                        {week.games.map((game, idx) => {
+                          const teams = game.matchup.split(' at ');
+                          const awayTeam = teams[0];
+                          const homeTeam = teams[1];
+                          const managersWithPick = managers.filter(manager => {
+                            const pick = manager.picks.find(p => p.week === week.week);
+                            return pick && pick.team && (pick.team.trim() !== '' && (pick.team === awayTeam || pick.team === homeTeam));
+                          });
+                          return (
+                            <div key={`${week.week}-m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="font-semibold">{game.time} ET</div>
+                                <div className="text-xs text-purple-200">{game.date}</div>
+                              </div>
+                              <div className="mt-1 font-medium">
+                                {awayTeam} <span className="text-gray-400">@</span> {homeTeam}
+                              </div>
+                              {managersWithPick.length > 0 ? (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {managersWithPick.map((manager, mgrIdx) => (
+                                    <span key={mgrIdx} className="px-2 py-0.5 rounded-full text-[11px] bg-green-500/60">{manager.name}</span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="mt-2 text-gray-300 text-xs">No picks</div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div className="mt-1 font-medium">
-                        {awayTeam} <span className="text-gray-400">@</span> {homeTeam}
-                      </div>
-                      {managersWithPick.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {managersWithPick.map((manager, mgrIdx) => (
-                            <span key={mgrIdx} className="px-2 py-0.5 rounded-full text-[11px] bg-green-500/60">{manager.name}</span>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-2 text-gray-300 text-xs">No picks</div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
 
@@ -882,11 +915,12 @@
                     const home = teams.find(t => t.homeAway === 'home');
                     const away = teams.find(t => t.homeAway === 'away');
                     const statusDesc = ev.status && ev.status.type && ev.status.type.shortDetail;
-                    const isCompleted = ev.status && ev.status.type && ev.status.type.state === 'post';
+                    const state = ev.status && ev.status.type && ev.status.type.state;
+                    const isCompleted = state === 'post';
                     return (
                       <div key={`m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
                         <div className="flex items-center justify-between">
-                          <div className={`text-xs px-2 py-0.5 rounded-full text-black font-medium ${isCompleted ? 'bg-green-300' : 'bg-yellow-300'}`}>{statusDesc}</div>
+                          <div className={`text-sm px-2 py-0.5 rounded-full font-semibold ${isCompleted ? 'bg-green-300 text-black' : (state === 'in' ? 'bg-red-300 text-black' : 'bg-yellow-300 text-black')}`}>{isCompleted ? 'Final' : (state === 'in' ? 'Live' : 'Scheduled')}</div>
                         </div>
                         <div className="mt-2">
                           <div className="flex justify-between text-sm">
@@ -898,6 +932,9 @@
                             <span className="font-medium">{home.team.displayName}</span>
                             <span className="font-mono">{home.score}</span>
                           </div>
+                          {statusDesc && (
+                            <div className="mt-1 text-sm font-mono text-purple-100">{statusDesc}</div>
+                          )}
                         </div>
                       </div>
                     );
