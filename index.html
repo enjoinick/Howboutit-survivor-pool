@@ -75,11 +75,12 @@
     }
     .ticker-track {
       animation-timing-function: linear;
-      animation-fill-mode: forwards;
       white-space: nowrap;
       will-change: transform;
     }
-    .ticker-track:hover { animation-play-state: paused; }
+    @media (hover: hover) {
+      .ticker-track:hover { animation-play-state: paused; }
+    }
     /* Glass effect */
     .glass {
       background: rgba(255, 255, 255, 0.1);
@@ -259,50 +260,64 @@
         setStreamJokes(arr);
       }, [jokes]);
 
-      // Measure and set marquee speed/offsets for continuous stream; infinite animation over full content width
-      useEffect(() => {
+      // Helper: recompute marquee metrics and restart animation with consistent speed
+      const recomputeTicker = React.useCallback(() => {
         const wrap = tickerWrapRef.current;
         const text = tickerTextRef.current;
         const track = tickerTrackRef.current;
         if (!wrap || !text || !track) return;
-        const contentW = text.scrollWidth || 1; // width of one full stream copy
-        const pxPerSec = 120; // readable pace
-        const rawSeconds = contentW / pxPerSec;
-        const seconds = Math.min(30, Math.max(10, rawSeconds));
+        if (text.childElementCount === 0) return; // wait until jokes are rendered
+        // Ensure measurement spans are laid out
+        const contentW = Math.max(1, text.scrollWidth);
+        // Constant reading speed in px/sec (tuned for readability)
+        const PX_PER_SEC = 20;
+        let seconds = contentW / PX_PER_SEC;
+        // Clamp duration to avoid extremes
+        seconds = Math.max(35, Math.min(120, seconds));
         setTickerDuration(seconds);
-        track.style.setProperty('--from', `0px`);
+        // Apply CSS variables and restart the animation cleanly
+        track.style.setProperty('--from', '0px');
         track.style.setProperty('--to', `-${contentW}px`);
         track.style.animationName = 'none';
-        void track.offsetWidth;
-        track.style.animationName = 'marqueeVar';
+        // Force reflow to reset animation
+        // eslint-disable-next-line no-unused-expressions
+        track.offsetWidth;
+        track.style.animationTimingFunction = 'linear';
         track.style.animationDuration = `${seconds}s`;
         track.style.animationIterationCount = 'infinite';
-      }, [streamJokes]);
+        track.style.animationName = 'marqueeVar';
+        track.style.animationPlayState = 'running';
+      }, []);
+
+      // Recompute on stream changes and on resize
+      useEffect(() => { recomputeTicker(); }, [streamJokes, recomputeTicker]);
+      useEffect(() => {
+        const onResize = () => recomputeTicker();
+        const onVisibility = () => { if (!document.hidden) recomputeTicker(); };
+        const onOrient = () => recomputeTicker();
+        window.addEventListener('resize', onResize);
+        document.addEventListener('visibilitychange', onVisibility);
+        window.addEventListener('orientationchange', onOrient);
+        return () => {
+          window.removeEventListener('resize', onResize);
+          document.removeEventListener('visibilitychange', onVisibility);
+          window.removeEventListener('orientationchange', onOrient);
+        };
+      }, [recomputeTicker]);
 
       // After web fonts load, re-measure and restart if width changed significantly
       useEffect(() => {
         let cancelled = false;
         const wrap = tickerWrapRef.current;
         const text = tickerTextRef.current;
-        const track = tickerTrackRef.current;
-        if (!wrap || !text || !track) return;
+        if (!wrap || !text) return;
         const initialW = text.scrollWidth || 1;
         const recompute = () => {
           if (cancelled) return;
           const newW = text.scrollWidth || 1;
           const delta = Math.abs(newW - initialW);
           if (delta / Math.max(1, initialW) < 0.05) return; // <5% change: ignore
-          const pxPerSec = 120;
-          const rawSeconds = newW / pxPerSec;
-          const seconds = Math.min(30, Math.max(10, rawSeconds));
-          setTickerDuration(seconds);
-          track.style.setProperty('--from', `0px`);
-          track.style.setProperty('--to', `-${newW}px`);
-          track.style.animationName = 'none';
-          void track.offsetWidth;
-          track.style.animationName = 'marqueeVar';
-          track.style.animationDuration = `${seconds}s`;
-          track.style.animationIterationCount = 'infinite';
+          recomputeTicker();
         };
         // If browser supports font loading API
         if (document.fonts && document.fonts.ready) {
@@ -313,7 +328,7 @@
           return () => { cancelled = true; clearTimeout(tid); };
         }
         return () => { cancelled = true; };
-      }, [streamJokes]);
+      }, [streamJokes, recomputeTicker]);
 
       // --- Helpers: calendar state from schedule dates ---
       const getWeekRange = (week) => {
@@ -958,16 +973,15 @@
               <div 
                 ref={tickerTrackRef}
                 className="ticker-track text-amber-200"
-                style={{ animationName: 'marqueeVar', animationDuration: `${tickerDuration}s` }}
               >
                 {/* First copy (measured) */}
-                <span ref={tickerTextRef} className="inline-flex items-center">
+                <span ref={tickerTextRef} className="inline-block">
                   {streamJokes.map((j, idx) => (
                     <span key={`a${idx}`} className="pr-10">{j}</span>
                   ))}
                 </span>
                 {/* Second copy for seamless loop */}
-                <span className="inline-flex items-center">
+                <span className="inline-block">
                   {streamJokes.map((j, idx) => (
                     <span key={`b${idx}`} className="pr-10">{j}</span>
                   ))}
