@@ -313,6 +313,8 @@
             const data = await res.json();
             if (!cancelled) {
               setGames(data.events || []);
+              // Update the visible last updated time to reflect the latest scoreboard fetch
+              setLastUpdated(new Date().toISOString());
               
               // Calculate margins and results for managers' picks
               if (data.events && data.events.length > 0) {
@@ -401,6 +403,8 @@
           // Update state if anything changed
           if (JSON.stringify(updatedManagers) !== JSON.stringify(managers)) {
             setManagers(updatedManagers);
+            // Also bump lastUpdated when managers are modified due to live data
+            setLastUpdated(new Date().toISOString());
           }
         };
         
@@ -462,7 +466,8 @@
         if (typeof pick.margin === 'number') return pick.margin;
         if (pick.team) {
           const outcome = teamOutcomeMap.get(pick.team);
-          if (outcome) return outcome.score - outcome.oppScore;
+          // Only count margin for completed games
+          if (outcome && outcome.state === 'post') return outcome.score - outcome.oppScore;
         }
         return 0;
       };
@@ -470,10 +475,12 @@
       // Draft order per provided rules (live-reactive)
       const computeDraftOrderLive = (mgrs) => {
         const totalWeeks = preseasonSchedule.length || 0;
+        const { activeWeek } = computeCalendarState(preseasonSchedule);
         const withKeys = mgrs.map(mgr => {
           const derived = deriveElimination(mgr);
           const eliminationWeek = derived.isEliminated ? derived.week : (totalWeeks + 1); // survivors rank highest
-          const tieWeek = derived.isEliminated ? derived.week : totalWeeks; // for survivors, use last week margin
+          // For survivors, use the CURRENT active week's margin to rank winners of completed games above others
+          const tieWeek = derived.isEliminated ? derived.week : activeWeek;
           const weekMargin = getWeekMargin(mgr, tieWeek);
           return { ...mgr, eliminationWeek, weekMargin };
         });
@@ -701,7 +708,19 @@
             },
             plugins: {
               legend: {
-                labels: { color: '#fff' }
+                labels: {
+                  color: '#fff',
+                  // Force legend swatch to match the default bar color (purple),
+                  // not the first bar's color (which may be yellow for the leader)
+                  generateLabels(chart) {
+                    const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                    return original.map(l => ({
+                      ...l,
+                      fillStyle: 'rgba(99, 102, 241, 0.7)',
+                      strokeStyle: 'rgba(99, 102, 241, 1)'
+                    }));
+                  }
+                }
               },
               tooltip: {
                 backgroundColor: 'rgba(255,255,255,0.9)',
@@ -832,17 +851,38 @@
               const isOpen = expanded.has(mgr.name);
               const completedWeeks = calendar.completedWeeks || 0;
               const totalWeeks = calendar.totalWeeks || preseasonSchedule.length;
+              const activeWeek = calendar.activeWeek || 0;
               const winsToDate = (mgr.picks || []).filter(p => p.week <= completedWeeks && p.result === 'W').length;
               const lossesToDate = (mgr.picks || []).filter(p => p.week <= completedWeeks && p.result === 'L').length;
               let footerText = '';
-              if (completedWeeks === 0) {
-                footerText = 'Season upcoming • First pick: W1';
-              } else if (!isEliminated && completedWeeks < totalWeeks) {
-                footerText = `Through W${completedWeeks}: ${winsToDate}-${lossesToDate} • Next: W${completedWeeks + 1}`;
-              } else if (!isEliminated && completedWeeks >= totalWeeks) {
-                footerText = `Survived all ${totalWeeks} weeks!`;
-              } else {
+              // Prioritize eliminated message
+              if (isEliminated) {
                 footerText = `Eliminated W${eliminationWeekComputed} • Record: ${winsToDate}-${lossesToDate}`;
+              } else if (completedWeeks < totalWeeks) {
+                // Season is underway or upcoming
+                if (activeWeek > 0) {
+                  // Check this manager's active-week pick state from live outcomes
+                  const activePick = (mgr.picks || []).find(p => p.week === activeWeek && p.team);
+                  const outcome = activePick ? teamOutcomeMap.get(activePick.team) : null;
+                  if (outcome && outcome.state === 'in') {
+                    footerText = `Week ${activeWeek} in progress • Record: ${winsToDate}-${lossesToDate}`;
+                  } else if (outcome && outcome.state === 'post') {
+                    // Some finals exist this week for this manager
+                    const adjWins = winsToDate + (outcome.isWinner ? 1 : 0);
+                    const adjLoss = lossesToDate + (!outcome.isWinner ? 1 : 0);
+                    footerText = `Through W${activeWeek}: ${adjWins}-${adjLoss}`;
+                  } else if (completedWeeks === 0) {
+                    footerText = `Season upcoming • First pick: W${activeWeek}`;
+                  } else {
+                    footerText = `Through W${completedWeeks}: ${winsToDate}-${lossesToDate} • Next: W${completedWeeks + 1}`;
+                  }
+                } else {
+                  // No active week determined yet
+                  footerText = 'Season upcoming • First pick: W1';
+                }
+              } else {
+                // Season complete and manager survived
+                footerText = `Survived all ${totalWeeks} weeks!`;
               }
               
               return (
@@ -893,22 +933,38 @@
                       {mgr.picks.map((pick, idx) => (
                         <div
                           key={idx}
-                          className={`px-2 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-medium flex items-center gap-1 whitespace-nowrap ${
-                            pick.result === 'W'
-                              ? 'bg-green-500/80'
-                              : pick.result === 'L'
-                                ? 'bg-red-500/80'
-                                : 'bg-gray-700/60'
-                          }`}
-                          title={`Week ${pick.week} - ${(pick.team || 'TBD')} - ${pick.result ? (pick.result === 'W' ? 'Win' : 'Loss') : 'Pending'}${pick.manualResult ? ' (Manual override)' : ''}`}
+                          className={(function(){
+                            const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isWinner ? 'W' : 'L') : null;
+                            const effective = pick.result || liveResult;
+                            const base = 'px-2 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-medium flex items-center gap-1 whitespace-nowrap ';
+                            if (effective === 'W') return base + 'bg-green-500/80';
+                            if (effective === 'L') return base + 'bg-red-500/80';
+                            return base + 'bg-gray-700/60';
+                          })()}
+                          title={(function(){
+                            const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isWinner ? 'W' : 'L') : null;
+                            const effective = pick.result || liveResult;
+                            const resText = effective ? (effective === 'W' ? 'Win' : 'Loss') : 'Pending';
+                            const liveSuffix = (!pick.result && liveResult) ? ' (Live)' : '';
+                            const manualSuffix = pick.manualResult ? ' (Manual override)' : '';
+                            return `Week ${pick.week} - ${(pick.team || 'TBD')} - ${resText}${liveSuffix}${manualSuffix}`;
+                          })()}
                         >
                           <span className="font-semibold">W{pick.week}</span>
                           <span className="inline max-w-[10rem] truncate sm:max-w-none" title={pick.team || 'TBD'}>{pick.team || 'TBD'}</span>
-                          {pick.result && (
-                            <span className="font-bold">
-                              {pick.result === 'W' ? '✓' : '✗'}
-                            </span>
-                          )}
+                          {(function(){
+                            const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isWinner ? 'W' : 'L') : null;
+                            const effective = pick.result || liveResult;
+                            if (!effective) return null;
+                            return (
+                              <span className="font-bold">
+                                {effective === 'W' ? '✓' : '✗'}
+                              </span>
+                            );
+                          })()}
                           {pick.manualResult && (
                             <span className="text-xs ml-1" title="Manual override">📝</span>
                           )}
@@ -1118,7 +1174,8 @@
                         const home = teams.find(t => t.homeAway === 'home');
                         const away = teams.find(t => t.homeAway === 'away');
                         const statusDesc = ev.status && ev.status.type && ev.status.type.shortDetail;
-                        const isCompleted = ev.status && ev.status.type && ev.status.type.state === 'post';
+                        const state = ev.status && ev.status.type && ev.status.type.state;
+                        const isCompleted = state === 'post';
                         
                         return (
                           <tr key={idx} className={idx % 2 === 0 ? 'bg-indigo-700/30' : 'bg-indigo-700/20'}>
@@ -1134,9 +1191,11 @@
                             </td>
                             <td className="p-2 text-center">
                               <span className={`px-2 py-1 rounded-full text-xs ${
-                                isCompleted 
-                                  ? 'bg-green-500/80' 
-                                  : 'bg-yellow-500/80'
+                                isCompleted
+                                  ? 'bg-green-500/80'
+                                  : (state === 'in'
+                                      ? 'bg-red-500/80 animate-pulse-slow'
+                                      : 'bg-yellow-500/80')
                               }`}>
                                 {statusDesc}
                               </span>
