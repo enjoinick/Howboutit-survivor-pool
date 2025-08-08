@@ -114,8 +114,8 @@
       });
       // Gist persistence settings
       const [showSettings, setShowSettings] = useState(false);
-      const [gistId, setGistId] = useState(localStorage.getItem('gistId') || '');
-      const [gistToken, setGistToken] = useState(localStorage.getItem('gistToken') || '');
+      const [gistId, setGistId] = useState((localStorage.getItem('gistId') || '').trim());
+      const [gistToken, setGistToken] = useState((localStorage.getItem('gistToken') || '').trim());
       const [isSaving, setIsSaving] = useState(false);
       const [dirty, setDirty] = useState(false);
       // File input ref for importing JSON
@@ -130,15 +130,18 @@
         }
       }, []);
 
-      // If no gistId in localStorage, try to default from config.json
+      // If no gistId (or whitespace) in localStorage/state, try to default from config.json
       useEffect(() => {
-        if (!gistId) {
+        if (!gistId || !gistId.trim()) {
           fetch(`config.json?t=${Date.now()}`)
             .then(res => res.ok ? res.json() : null)
             .then(cfg => {
               if (cfg && cfg.gistId) {
-                setGistId(cfg.gistId);
-                localStorage.setItem('gistId', cfg.gistId);
+                const id = String(cfg.gistId).trim();
+                if (id) {
+                  setGistId(id);
+                  localStorage.setItem('gistId', id);
+                }
               }
             })
             .catch(() => {});
@@ -334,11 +337,14 @@
         const id = (gistId || localStorage.getItem('gistId') || '').trim();
         const token = (gistToken || localStorage.getItem('gistToken') || '').trim();
         if (!id || !token) {
+          console.warn('Save to Gist blocked: missing credentials', { hasId: !!id, hasToken: !!token });
+          setShowSettings(true);
           showNotification('Configure Gist ID and Token in Settings first', 'error');
           return;
         }
         try {
           setIsSaving(true);
+          console.log('Saving to Gist...', { id: id.slice(0,4) + '...' + id.slice(-4), tokenLength: token.length });
           const payload = {
             files: {
               'data.json': { content: jsonData }
