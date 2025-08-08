@@ -233,9 +233,6 @@
       const tickerTextRef = useRef(null);
       const tickerTrackRef = useRef(null);
       const [tickerDuration, setTickerDuration] = useState(20); // seconds
-      const nextJoke = React.useCallback(() => {
-        setJokeIdx(i => (i + 1) % jokes.length);
-      }, [jokes.length]);
       const jokes = useMemo(() => [
         "Chris (Hello Naber!) — Yo, Chris, 'Hello Naber'? Sounds like you’re tryin’ to flirt with the neighbor’s dog at the BBQ. Like, ‘Hey, Rover, you lookin’ fine in that flea collar, wanna split a Milk-Bone?’ Man, your team’s so soft, it’s like you drafted a roster full of participation trophies and vibes. Bet you’re startin’ a punter in Week 1, yellin’ ‘NABER!’ when he shanks it into the stands.",
         "Josh (S K) — Josh, what’s ‘S K’ stand for? Shitty Kickers? You out here draftin’ guys who miss 20-yard field goals like they’re blindfolded at a carnival game. I bet your team’s game plan is just ‘vibe and cry.’ You’re the dude who shows up to the draft with a Ouija board, tryna summon Tom Brady’s ghost, but all you get is a spectral fumble from Jake Delhomme.",
@@ -248,6 +245,11 @@
         "Nick (Allen’s Dirty Brown Kupp) — Nick, that name’s so filthy it gets flagged on Craigslist. You’re bankin’ on Cooper Kupp while your WR2 sells bootleg jerseys in Lot B.",
         "William (Just Win Baby) — William, more like ‘Just Lose, Maybe.’ You’re quotin’ Al Davis while your QB throws four picks. Just win? Try just survivin’ the group chat roast."
       ], []);
+      const nextJoke = React.useCallback(() => {
+        const len = Array.isArray(jokes) ? jokes.length : 0;
+        if (!len) return;
+        setJokeIdx(i => (i + 1) % len);
+      }, [jokes]);
       // Advance to next joke only when one full marquee cycle completes
       useEffect(() => {
         const el = tickerTrackRef.current;
