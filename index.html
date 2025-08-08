@@ -1036,10 +1036,25 @@
               const activeWeek = calendar.activeWeek || 0;
               const winsToDate = (mgr.picks || []).filter(p => p.week <= completedWeeks && p.result === 'W').length;
               const lossesToDate = (mgr.picks || []).filter(p => p.week <= completedWeeks && p.result === 'L').length;
+              // Start from persisted totals through completed weeks
+              let displayWins = winsToDate;
+              let displayLosses = lossesToDate;
+              // If eliminated this week but the week isn't counted in completedWeeks yet,
+              // reflect that loss in the displayed record (e.g., show 0-1 instead of 0-0)
+              if (isEliminated && eliminationWeekComputed && eliminationWeekComputed > completedWeeks) {
+                const elimPick = (mgr.picks || []).find(p => p.week === eliminationWeekComputed && p.team);
+                const elimOutcome = elimPick ? teamOutcomeMap.get(elimPick.team) : null;
+                if (elimOutcome) {
+                  // If we somehow have a winner flag, respect it; otherwise default to a loss since eliminated
+                  if (elimOutcome.isWinner === true) displayWins += 1; else displayLosses += 1;
+                } else {
+                  displayLosses += 1;
+                }
+              }
               let footerText = '';
               // Prioritize eliminated message
               if (isEliminated) {
-                footerText = `Eliminated W${eliminationWeekComputed} • Record: ${winsToDate}-${lossesToDate}`;
+                footerText = `Eliminated W${eliminationWeekComputed} • Record: ${displayWins}-${displayLosses}`;
               } else if (completedWeeks < totalWeeks) {
                 // Season is underway or upcoming
                 if (activeWeek > 0) {
