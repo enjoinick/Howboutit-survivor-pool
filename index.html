@@ -478,19 +478,23 @@
                       margin = away.score - home.score;
                     }
                     
-                    // Determine if the team won or lost
-                    const result = margin > 0 ? 'W' : 'L';
+                    // Determine if the team won, lost, or tied
+                    let result = null;
+                    if (margin > 0) result = 'W';
+                    else if (margin < 0) result = 'L';
+                    else result = null; // tie -> no W/L
                     
                     // Only auto-update if the game is completed and this pick is not a manual override
                     if (status === 'post' && !pick.manualResult) {
+                      const nextPick = {
+                        ...pick,
+                        margin: margin,
+                        manualResult: false, // Mark as automatic result
+                        lastUpdated: new Date().toISOString()
+                      };
+                      if (result !== null) nextPick.result = result; else delete nextPick.result;
                       if (pick.result !== result || pick.margin !== margin) {
-                        newPicks[weekIndex] = {
-                          ...pick,
-                          result: result,
-                          margin: margin,
-                          manualResult: false, // Mark as automatic result
-                          lastUpdated: new Date().toISOString()
-                        };
+                        newPicks[weekIndex] = nextPick;
                         hasUpdatedPick = true;
                       }
                     }
@@ -547,8 +551,9 @@
           const state = ev.status && ev.status.type && ev.status.type.state;
           const homeScore = Number(home.score || 0);
           const awayScore = Number(away.score || 0);
-          map.set(home.team.displayName, { state, isWinner: homeScore > awayScore, score: homeScore, oppScore: awayScore });
-          map.set(away.team.displayName, { state, isWinner: awayScore > homeScore, score: awayScore, oppScore: homeScore });
+          const isTie = state === 'post' && homeScore === awayScore;
+          map.set(home.team.displayName, { state, isWinner: homeScore > awayScore, isTie, score: homeScore, oppScore: awayScore });
+          map.set(away.team.displayName, { state, isWinner: awayScore > homeScore, isTie, score: awayScore, oppScore: homeScore });
         });
         return map;
       }, [games]);
@@ -558,32 +563,35 @@
        */
       // Helper to derive elimination and week even if picks weren't persisted yet
       const deriveElimination = (mgr) => {
-        // First, trust explicit losses if present
-        const lossPick = (mgr.picks || []).find(p => p.result === 'L');
-        if (lossPick) return { isEliminated: true, week: lossPick.week };
-        // Otherwise infer from live scores: a completed (post) game with a loss
+        // Prefer LIVE outcomes: if any completed game is a non-tie loss for the picked team, eliminated.
         for (const p of (mgr.picks || [])) {
           if (!p.team) continue;
           const outcome = teamOutcomeMap.get(p.team);
-          if (outcome && outcome.state === 'post' && !outcome.isWinner) {
+          if (outcome && outcome.state === 'post' && !outcome.isWinner && !outcome.isTie) {
             return { isEliminated: true, week: p.week };
           }
         }
+        // Fallback to stored explicit losses only if no live completed outcome available
+        const lossPick = (mgr.picks || []).find(p => p.result === 'L');
+        if (lossPick) return { isEliminated: true, week: lossPick.week };
         return { isEliminated: false, week: null };
       };
 
-      // Margin for a specific week, using stored pick.margin when present,
-      // otherwise derive from live scores (teamOutcomeMap). Positive when pick's team leads.
+      // Margin for a specific week. Prefer LIVE final score margin when available,
+      // otherwise fall back to stored pick.margin. Positive when the picked team leads.
       const getWeekMargin = (mgr, week) => {
         if (!week) return 0;
         const pick = (mgr.picks || []).find(p => p.week === week);
         if (!pick) return 0;
-        if (typeof pick.margin === 'number') return pick.margin;
         if (pick.team) {
           const outcome = teamOutcomeMap.get(pick.team);
-          // Only count margin for completed games
-          if (outcome && outcome.state === 'post') return outcome.score - outcome.oppScore;
+          // Use live final margin if the game is completed
+          if (outcome && outcome.state === 'post') {
+            return (outcome.score - outcome.oppScore) || 0;
+          }
         }
+        // Fallback to stored margin if present (covers manual overrides or persisted results)
+        if (typeof pick.margin === 'number') return pick.margin;
         return 0;
       };
 
@@ -1065,8 +1073,9 @@
                     footerText = `Week ${activeWeek} in progress • Record: ${winsToDate}-${lossesToDate}`;
                   } else if (outcome && outcome.state === 'post') {
                     // Some finals exist this week for this manager
+                    const isTie = outcome.isTie === true || (outcome.score === outcome.oppScore);
                     const adjWins = winsToDate + (outcome.isWinner ? 1 : 0);
-                    const adjLoss = lossesToDate + (!outcome.isWinner ? 1 : 0);
+                    const adjLoss = lossesToDate + ((!outcome.isWinner && !isTie) ? 1 : 0);
                     footerText = `Through W${activeWeek}: ${adjWins}-${adjLoss}`;
                   } else if (completedWeeks === 0) {
                     footerText = `Season upcoming • First pick: W${activeWeek}`;
@@ -1132,7 +1141,7 @@
                           key={idx}
                           className={(function(){
                             const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
-                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isWinner ? 'W' : 'L') : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
                             const base = 'px-2 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-medium flex items-center gap-1 whitespace-nowrap ';
                             if (effective === 'W') return base + 'bg-green-500/80';
@@ -1141,9 +1150,11 @@
                           })()}
                           title={(function(){
                             const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
-                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isWinner ? 'W' : 'L') : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
-                            const resText = effective ? (effective === 'W' ? 'Win' : 'Loss') : 'Pending';
+                            let resText = 'Pending';
+                            if (effective) resText = (effective === 'W' ? 'Win' : 'Loss');
+                            else if (outcome && outcome.state === 'post' && outcome.isTie) resText = 'Tie';
                             const liveSuffix = (!pick.result && liveResult) ? ' (Live)' : '';
                             const manualSuffix = pick.manualResult ? ' (Manual override)' : '';
                             return `Week ${pick.week} - ${(pick.team || 'TBD')} - ${resText}${liveSuffix}${manualSuffix}`;
@@ -1153,7 +1164,7 @@
                           <span className="inline max-w-[10rem] truncate sm:max-w-none" title={pick.team || 'TBD'}>{pick.team || 'TBD'}</span>
                           {(function(){
                             const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
-                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isWinner ? 'W' : 'L') : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
                             if (!effective) return null;
                             return (
