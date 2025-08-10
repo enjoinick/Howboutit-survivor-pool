@@ -1,5 +1,5 @@
 /* Minimal service worker for installability and basic offline support */
-const CACHE_NAME = 'survivor-pool-v1-20250807';
+const CACHE_NAME = 'survivor-pool-v1-20250810a';
 const ASSETS = [
   './',
   './index.html',
@@ -32,18 +32,35 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
+  const accept = req.headers.get('accept') || '';
+  const isHTML = accept.includes('text/html');
+
+  if (isHTML) {
+    // Network-first for HTML to avoid stale app code
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          const copy = res.clone();
+          if (res.ok) caches.open(CACHE_NAME).then((c) => c.put(req, copy)).catch(() => {});
+          return res;
+        })
+        .catch(() => caches.match(req).then((c) => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Cache-first for others
   event.respondWith(
     caches.match(req).then((cached) => {
       const network = fetch(req)
         .then((res) => {
           const copy = res.clone();
-          // Only cache same-origin GETs and successful responses
           if (res.ok && new URL(req.url).origin === self.location.origin) {
             caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
           }
           return res;
         })
-        .catch(() => cached || caches.match('./index.html'));
+        .catch(() => cached);
       return cached || network;
     })
   );

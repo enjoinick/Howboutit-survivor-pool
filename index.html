@@ -333,8 +333,12 @@
 
       // --- Helpers: calendar state from schedule dates ---
       const getWeekRange = (week) => {
-        const start = new Date(week.games[0].date + 'T00:00:00');
-        const end = new Date(Math.max(...week.games.map(g => new Date(g.date + 'T23:59:59').getTime())));
+        // Use UTC day bounds and generous padding to avoid timezone edge misses
+        const startUTC = new Date(week.games[0].date + 'T00:00:00Z');
+        const endUTC = new Date(Math.max(...week.games.map(g => new Date(g.date + 'T23:59:59Z').getTime())));
+        const pad = 36 * 60 * 60 * 1000; // +/-36h buffer
+        const start = new Date(startUTC.getTime() - pad);
+        const end = new Date(endUTC.getTime() + pad);
         return { start, end };
       };
       const computeCalendarState = (schedule) => {
@@ -561,8 +565,9 @@
 
       // Outcome helper for a specific week window (prevents future-week picks from inheriting past results)
       const getTeamOutcomeForWeek = (teamName, weekNumber) => {
-        if (!teamName || !weekNumber || !games || !games.length) return null;
-        const weekData = preseasonSchedule.find(w => w.week === weekNumber);
+        const wk = Number(weekNumber);
+        if (!teamName || !wk || !games || !games.length) return null;
+        const weekData = preseasonSchedule.find(w => Number(w.week) === wk);
         if (!weekData) return null;
         const { start, end } = getWeekRange(weekData);
         for (const ev of games) {
@@ -619,11 +624,12 @@
         if (mgr && mgr.buyback === true && typeof mgr.carryMargin === 'number') {
           return mgr.carryMargin;
         }
-        if (!week) return 0;
-        const pick = (mgr.picks || []).find(p => p.week === week);
+        const wk = Number(week);
+        if (!wk) return 0;
+        const pick = (mgr.picks || []).find(p => Number(p.week) === wk);
         if (!pick) return 0;
         if (pick.team) {
-          const outcome = getTeamOutcomeForWeek(pick.team, week);
+          const outcome = getTeamOutcomeForWeek(pick.team, wk);
           // Use live final margin if the game is completed
           if (outcome && outcome.state === 'post') {
             return (outcome.score - outcome.oppScore) || 0;
@@ -640,9 +646,9 @@
         const { activeWeek } = computeCalendarState(preseasonSchedule);
         const withKeys = mgrs.map(mgr => {
           const derived = deriveElimination(mgr);
-          const eliminationWeek = derived.isEliminated ? derived.week : (totalWeeks + 1); // survivors rank highest
+          const eliminationWeek = derived.isEliminated ? Number(derived.week) : (totalWeeks + 1); // survivors rank highest
           // For survivors, use the CURRENT active week's margin to rank winners of completed games above others
-          const tieWeek = derived.isEliminated ? derived.week : activeWeek;
+          const tieWeek = derived.isEliminated ? Number(derived.week) : Number(activeWeek);
           const weekMargin = getWeekMargin(mgr, tieWeek);
           return { ...mgr, eliminationWeek, weekMargin };
         });
@@ -814,13 +820,14 @@
         return orderedManagers.map(mgr => {
           let wins = 0;
           for (const p of (mgr.picks || [])) {
-            if (!p) continue;
-            const { team, week } = p;
-            if (team && week) {
-              const outcome = getTeamOutcomeForWeek(team, week);
-              if (outcome && outcome.state === 'post') {
-                if (outcome.isWinner && !outcome.isTie) wins += 1;
-                continue; // live-final handled; skip fallback
+            const wk = Number(p && p.week);
+            if (!wk) continue;
+            const team = p.team;
+            if (team) {
+              const out = getTeamOutcomeForWeek(team, wk);
+              if (out && out.state === 'post') {
+                if (out.isWinner && !out.isTie) wins += 1;
+                continue; // handled by live-final
               }
             }
             if (p.result === 'W') wins += 1;
@@ -888,6 +895,11 @@
           chartInstance.current.destroy();
         }
         
+        // Debug current chart data
+        try { console.debug('Survival chartData:', chartData); } catch (_) {}
+        const maxValue = chartData.length ? Math.max(...chartData.map(d => Number(d.wins) || 0)) : 0;
+        const weeksCap = (calendar && calendar.totalWeeks) || (preseasonSchedule && preseasonSchedule.length) || 3;
+        const yMax = Math.max(1, weeksCap, maxValue);
         chartInstance.current = new Chart(ctx, {
           type: 'bar',
           data: {
@@ -895,14 +907,14 @@
             datasets: [
               {
                 label: 'Survived Weeks',
-                data: chartData.map(item => item.wins),
+                data: chartData.map(item => Number(item.wins) || 0),
                 backgroundColor: chartData.map((_, idx) => 
                   orderedManagers[idx].draftOrder === 1 ? 'rgba(253, 224, 71, 0.8)' : 'rgba(99, 102, 241, 0.7)'
                 ),
                 borderColor: chartData.map((_, idx) => 
                   orderedManagers[idx].draftOrder === 1 ? 'rgba(253, 224, 71, 1)' : 'rgba(99, 102, 241, 1)'
                 ),
-                borderWidth: 1,
+                borderWidth: 0,
                 borderRadius: 5
               }
             ]
@@ -917,13 +929,13 @@
               },
               y: {
                 beginAtZero: true,
-                max: 3,
+                max: yMax,
                 ticks: { 
                   color: '#fff', 
                   font: { size: 12 }, 
                   stepSize: 1,
                   callback: function(value) {
-                    return value === 0 ? '0' : value === 1 ? '1' : value === 2 ? '2' : '3';
+                    return value;
                   }
                 },
                 grid: { color: 'rgba(255, 255, 255, 0.2)' }
@@ -968,7 +980,7 @@
             chartInstance.current = null;
           }
         };
-      }, [chartOpen, chartData, orderedManagers]);
+      }, [chartOpen, chartData, orderedManagers, calendar]);
 
       if (loading) {
         return (
