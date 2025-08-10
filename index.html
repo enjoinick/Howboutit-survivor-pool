@@ -559,6 +559,36 @@
         return map;
       }, [games]);
 
+      // Outcome helper for a specific week window (prevents future-week picks from inheriting past results)
+      const getTeamOutcomeForWeek = (teamName, weekNumber) => {
+        if (!teamName || !weekNumber || !games || !games.length) return null;
+        const weekData = preseasonSchedule.find(w => w.week === weekNumber);
+        if (!weekData) return null;
+        const { start, end } = getWeekRange(weekData);
+        for (const ev of games) {
+          const evDate = ev.date ? new Date(ev.date) : null;
+          if (!evDate || evDate < start || evDate > end) continue;
+          const comp = ev.competitions && ev.competitions[0];
+          if (!comp) continue;
+          const teams = comp.competitors || [];
+          const home = teams.find(t => t.homeAway === 'home');
+          const away = teams.find(t => t.homeAway === 'away');
+          if (!home || !away) continue;
+          const match = (home.team && home.team.displayName === teamName) || (away.team && away.team.displayName === teamName);
+          if (!match) continue;
+          const state = ev.status && ev.status.type && ev.status.type.state;
+          const homeScore = Number(home.score || 0);
+          const awayScore = Number(away.score || 0);
+          const isTie = state === 'post' && homeScore === awayScore;
+          if (home.team.displayName === teamName) {
+            return { state, isWinner: homeScore > awayScore, isTie, score: homeScore, oppScore: awayScore };
+          } else {
+            return { state, isWinner: awayScore > homeScore, isTie, score: awayScore, oppScore: homeScore };
+          }
+        }
+        return null;
+      };
+
       /**
        * Calculate elimination week and draft order
        */
@@ -571,7 +601,7 @@
         // Prefer LIVE outcomes: if any completed game is a non-tie loss for the picked team, eliminated.
         for (const p of (mgr.picks || [])) {
           if (!p.team) continue;
-          const outcome = teamOutcomeMap.get(p.team);
+          const outcome = getTeamOutcomeForWeek(p.team, p.week);
           if (outcome && outcome.state === 'post' && !outcome.isWinner && !outcome.isTie) {
             return { isEliminated: true, week: p.week };
           }
@@ -593,7 +623,7 @@
         const pick = (mgr.picks || []).find(p => p.week === week);
         if (!pick) return 0;
         if (pick.team) {
-          const outcome = teamOutcomeMap.get(pick.team);
+          const outcome = getTeamOutcomeForWeek(pick.team, week);
           // Use live final margin if the game is completed
           if (outcome && outcome.state === 'post') {
             return (outcome.score - outcome.oppScore) || 0;
@@ -1075,7 +1105,7 @@
               // reflect that loss in the displayed record (e.g., show 0-1 instead of 0-0)
               if (isEliminated && eliminationWeekComputed && eliminationWeekComputed > completedWeeks) {
                 const elimPick = (mgr.picks || []).find(p => p.week === eliminationWeekComputed && p.team);
-                const elimOutcome = elimPick ? teamOutcomeMap.get(elimPick.team) : null;
+                const elimOutcome = elimPick ? getTeamOutcomeForWeek(elimPick.team, elimPick.week) : null;
                 if (elimOutcome) {
                   // If we somehow have a winner flag, respect it; otherwise default to a loss since eliminated
                   if (elimOutcome.isWinner === true) displayWins += 1; else displayLosses += 1;
@@ -1092,7 +1122,7 @@
                 if (activeWeek > 0) {
                   // Check this manager's active-week pick state from live outcomes
                   const activePick = (mgr.picks || []).find(p => p.week === activeWeek && p.team);
-                  const outcome = activePick ? teamOutcomeMap.get(activePick.team) : null;
+                  const outcome = activePick ? getTeamOutcomeForWeek(activePick.team, activePick.week) : null;
                   if (outcome && outcome.state === 'in') {
                     footerText = `Week ${activeWeek} in progress • Record: ${winsToDate}-${lossesToDate}`;
                   } else if (outcome && outcome.state === 'post') {
@@ -1164,7 +1194,7 @@
                         <div
                           key={idx}
                           className={(function(){
-                            const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
+                            const outcome = pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null;
                             const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
                             const base = 'px-2 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-medium flex items-center gap-1 whitespace-nowrap ';
@@ -1173,7 +1203,7 @@
                             return base + 'bg-gray-700/60';
                           })()}
                           title={(function(){
-                            const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
+                            const outcome = pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null;
                             const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
                             let resText = 'Pending';
@@ -1187,7 +1217,7 @@
                           <span className="font-semibold">W{pick.week}</span>
                           <span className="inline max-w-[10rem] truncate sm:max-w-none" title={pick.team || 'TBD'}>{pick.team || 'TBD'}</span>
                           {(function(){
-                            const outcome = pick.team ? teamOutcomeMap.get(pick.team) : null;
+                            const outcome = pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null;
                             const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
                             if (!effective) return null;
@@ -1209,7 +1239,7 @@
                             if (bbWeek == null) {
                               for (const p of picksSorted) {
                                 if (!p || !p.team) continue;
-                                const outcome = teamOutcomeMap.get(p.team);
+                                const outcome = getTeamOutcomeForWeek(p.team, p.week);
                                 if (outcome && outcome.state === 'post' && !outcome.isWinner && !outcome.isTie) { bbWeek = p.week; break; }
                               }
                             }
@@ -1324,7 +1354,7 @@
                               <div className="flex flex-wrap gap-1">
                                 {managersWithPick.map((manager, mgrIdx) => {
                                   const pick = manager.picks.find(p => p.week === week.week);
-                                  const outcome = pick && pick.team ? teamOutcomeMap.get(pick.team) : null;
+                                  const outcome = pick && pick.team ? getTeamOutcomeForWeek(pick.team, week.week) : null;
                                   let cls = 'bg-gray-500/60';
                                   if (outcome && outcome.state === 'post') {
                                     cls = outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
@@ -1391,7 +1421,7 @@
                                 <div className="mt-2 flex flex-wrap gap-1">
                                   {managersWithPick.map((manager, mgrIdx) => {
                                     const pick = manager.picks.find(p => p.week === week.week);
-                                    const outcome = pick && pick.team ? teamOutcomeMap.get(pick.team) : null;
+                                    const outcome = pick && pick.team ? getTeamOutcomeForWeek(pick.team, week.week) : null;
                                     let cls = 'bg-gray-500/60';
                                     if (outcome && outcome.state === 'post') {
                                       cls = outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
