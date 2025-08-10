@@ -819,18 +819,27 @@
       const chartData = useMemo(() => {
         return orderedManagers.map(mgr => {
           let wins = 0;
-          for (const p of (mgr.picks || [])) {
+          let eliminated = false;
+          const picksSorted = [...(mgr.picks || [])].sort((a, b) => Number(a.week) - Number(b.week));
+          for (const p of picksSorted) {
             const wk = Number(p && p.week);
-            if (!wk) continue;
+            if (!wk || eliminated) continue;
             const team = p.team;
             if (team) {
               const out = getTeamOutcomeForWeek(team, wk);
               if (out && out.state === 'post') {
-                if (out.isWinner && !out.isTie) wins += 1;
-                continue; // handled by live-final
+                if (out.isTie) continue; // ties neither win nor eliminate
+                if (out.isWinner) {
+                  wins += 1;
+                } else {
+                  eliminated = true;
+                }
+                continue;
               }
             }
+            // Fallback to stored result only if no live final
             if (p.result === 'W') wins += 1;
+            else if (p.result === 'L') { eliminated = true; }
           }
           return { name: mgr.name, wins };
         });
