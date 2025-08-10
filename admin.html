@@ -256,7 +256,20 @@
       
       const handleManagerInfoChange = (managerIndex, field, value) => {
         const updatedManagers = [...managers];
-        updatedManagers[managerIndex][field] = field === 'lastYearRank' ? parseInt(value) : value;
+        if (field === 'lastYearRank') {
+          updatedManagers[managerIndex][field] = parseInt(value);
+        } else if (field === 'carryMargin') {
+          const num = typeof value === 'number' ? value : parseInt(value);
+          updatedManagers[managerIndex][field] = Number.isFinite(num) ? num : 0;
+        } else if (field === 'buyback') {
+          updatedManagers[managerIndex][field] = !!value;
+          if (value === true) {
+            // Keep admin UI consistent: show as alive when buyback is active
+            updatedManagers[managerIndex].eliminated = false;
+          }
+        } else {
+          updatedManagers[managerIndex][field] = value;
+        }
         setManagers(updatedManagers);
         updateJsonData(updatedManagers);
       };
@@ -662,11 +675,11 @@
                     </div>
                     <div className="flex gap-2">
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        manager.eliminated 
-                          ? 'bg-red-500/80' 
+                        (manager.eliminated && !manager.buyback)
+                          ? 'bg-red-500/80'
                           : 'bg-green-500/80'
                       }`}>
-                        {manager.eliminated ? 'Eliminated' : 'Alive'}
+                        {(manager.eliminated && !manager.buyback) ? 'Eliminated' : (manager.buyback ? 'Alive (Buyback)' : 'Alive')}
                       </span>
                       <button
                         onClick={() => resetElimination(managerIndex)}
@@ -757,6 +770,28 @@
                         value={manager.lastYearRank}
                         onChange={(e) => handleManagerInfoChange(managerIndex, 'lastYearRank', parseInt(e.target.value))}
                         className="w-16 p-1 rounded text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={`buyback-${managerIndex}`}
+                        type="checkbox"
+                        checked={!!manager.buyback}
+                        onChange={(e) => handleManagerInfoChange(managerIndex, 'buyback', e.target.checked)}
+                        className="h-4 w-4 rounded accent-purple-600"
+                        aria-label="Buyback active"
+                      />
+                      <label htmlFor={`buyback-${managerIndex}`} className="text-sm">Buyback</label>
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Carry Margin</label>
+                      <input
+                        type="number"
+                        value={typeof manager.carryMargin === 'number' ? manager.carryMargin : ''}
+                        onChange={(e) => handleManagerInfoChange(managerIndex, 'carryMargin', e.target.value)}
+                        className="w-24 p-1 rounded text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        placeholder="-7"
+                        disabled={!manager.buyback}
                       />
                     </div>
                   </div>

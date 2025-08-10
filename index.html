@@ -564,6 +564,10 @@
        */
       // Helper to derive elimination and week even if picks weren't persisted yet
       const deriveElimination = (mgr) => {
+        // Buyback override: allow manager to continue despite a recorded loss
+        if (mgr && mgr.buyback === true) {
+          return { isEliminated: false, week: null };
+        }
         // Prefer LIVE outcomes: if any completed game is a non-tie loss for the picked team, eliminated.
         for (const p of (mgr.picks || [])) {
           if (!p.team) continue;
@@ -581,6 +585,10 @@
       // Margin for a specific week. Prefer LIVE final score margin when available,
       // otherwise fall back to stored pick.margin. Positive when the picked team leads.
       const getWeekMargin = (mgr, week) => {
+        // Buyback carry margin: use fixed margin if provided (e.g., -7)
+        if (mgr && mgr.buyback === true && typeof mgr.carryMargin === 'number') {
+          return mgr.carryMargin;
+        }
         if (!week) return 0;
         const pick = (mgr.picks || []).find(p => p.week === week);
         if (!pick) return 0;
@@ -1192,6 +1200,32 @@
                           {pick.manualResult && (
                             <span className="text-xs ml-1" title="Manual override">📝</span>
                           )}
+                          {(function(){
+                            // Show buyback indicator next to the week they bought back in
+                            if (!mgr || !mgr.buyback) return null;
+                            const picksSorted = (mgr.picks || []).slice().sort((a,b) => (a.week||0) - (b.week||0));
+                            const storedLoss = picksSorted.find(p => p && p.result === 'L');
+                            let bbWeek = storedLoss ? storedLoss.week : null;
+                            if (bbWeek == null) {
+                              for (const p of picksSorted) {
+                                if (!p || !p.team) continue;
+                                const outcome = teamOutcomeMap.get(p.team);
+                                if (outcome && outcome.state === 'post' && !outcome.isWinner && !outcome.isTie) { bbWeek = p.week; break; }
+                              }
+                            }
+                            if (bbWeek === pick.week) {
+                              return (
+                                <span
+                                  className="ml-1 px-2 py-0.5 rounded-full bg-yellow-400 text-black font-bold uppercase text-[10px]"
+                                  title="Buyback week"
+                                  aria-label="Buyback week"
+                                >
+                                  Buy Back Bitch
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       ))}
                     </div>
