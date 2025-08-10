@@ -225,6 +225,7 @@
       const joshAudioRef = useRef(null); // easter egg audio ref
       const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan (GRAVEDIGGER)
       const westonAudioRef = useRef(null); // easter egg audio ref for Weston (DUUUVALL)
+      const ryanAudioRef = useRef(null); // easter egg audio ref for Ryan (Opposite of Adults rmx)
       // Public auto-persist controls
       const [autoPersist, setAutoPersist] = useState(localStorage.getItem('autoPersistEnabled') === 'true');
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
@@ -710,13 +711,29 @@
           return next;
         });
       };
+      // Pause all easter egg audios before playing another
+      const pauseAllEggs = () => {
+        [joshAudioRef, jordanAudioRef, westonAudioRef, ryanAudioRef].forEach(ref => {
+          try { if (ref && ref.current) ref.current.pause(); } catch (e) {}
+        });
+      };
       const handleCardClick = (mgr) => {
         if (!mgr || !mgr.name) return;
+        // Ryan easter egg
+        if (mgr.name.trim().toLowerCase() === 'ryan' && ryanAudioRef.current) {
+          try {
+            pauseAllEggs();
+            ryanAudioRef.current.currentTime = 0;
+            ryanAudioRef.current.play();
+          } catch (e) {
+            console.warn('Ryan easter egg audio failed to play:', e);
+          }
+          return;
+        }
         if (mgr.name.trim().toLowerCase() === 'josh' && joshAudioRef.current) {
           try {
             // stop other audio if playing
-            if (jordanAudioRef.current) jordanAudioRef.current.pause();
-            if (westonAudioRef.current) westonAudioRef.current.pause();
+            pauseAllEggs();
             joshAudioRef.current.currentTime = 0;
             joshAudioRef.current.play();
           } catch (e) {
@@ -730,8 +747,7 @@
         const isDuuuval = labelLower.includes('duuuval');
         if ((isWeston || isDuuuval) && westonAudioRef.current) {
           try {
-            if (joshAudioRef.current) joshAudioRef.current.pause();
-            if (jordanAudioRef.current) jordanAudioRef.current.pause();
+            pauseAllEggs();
             westonAudioRef.current.currentTime = 0;
             westonAudioRef.current.play();
           } catch (e) {
@@ -744,8 +760,7 @@
         const isGraveDigger = (mgr.teamLabel || '').trim().toLowerCase() === 'gravedigger';
         if ((isJordan || isGraveDigger) && jordanAudioRef.current) {
           try {
-            if (joshAudioRef.current) joshAudioRef.current.pause();
-            if (westonAudioRef.current) westonAudioRef.current.pause();
+            pauseAllEggs();
             jordanAudioRef.current.currentTime = 0;
             jordanAudioRef.current.play();
           } catch (e) {
@@ -920,6 +935,7 @@
           <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="auto" style={{ display: 'none' }} />
           <audio ref={jordanAudioRef} src="Audio/GraveDigger.mp3" preload="auto" style={{ display: 'none' }} />
           <audio ref={westonAudioRef} src="Audio/Duuuval.mp3" preload="auto" style={{ display: 'none' }} />
+          <audio ref={ryanAudioRef} src="Audio/Opposite of Adults rmx.mp3" preload="auto" style={{ display: 'none' }} />
           {/* Sticky Toolbar */}
           <div
             className="sticky top-0 z-50 glass rounded-xl px-3 py-2 -mx-1 md:mx-0 backdrop-blur animate-fade-in"
@@ -1301,17 +1317,18 @@
                 </tbody>
               </table>
             </div>
-            {/* Mobile grouped by week with toggles */}
-            <div className="md:hidden space-y-3">
-              {preseasonSchedule.map(week => {
-                const isOpen = openWeeks.has(week.week);
-                return (
-                  <div key={`week-${week.week}`} className="rounded-xl bg-indigo-900/20">
+             {/* Mobile grouped by week with toggles */}
+             <div className="md:hidden space-y-3">
+               {preseasonSchedule.map(week => {
+                 const isOpen = openWeeks.has(week.week);
+                 return (
+                   <div key={`week-${week.week}`} className="rounded-xl bg-indigo-900/20">
                     <button
                       onClick={() => toggleWeek(week.week)}
                       className="w-full flex items-center justify-between p-3"
                       aria-expanded={isOpen}
                       aria-controls={`week-${week.week}-games`}
+                      aria-label={`Toggle week ${week.week} games`}
                     >
                       <span className="font-semibold">Week {week.week}</span>
                       <i className={`fas ${isOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
