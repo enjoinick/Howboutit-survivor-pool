@@ -817,7 +817,7 @@
       const calendar = React.useMemo(() => computeCalendarState(preseasonSchedule), [preseasonSchedule, lastUpdated]);
       // Build data for bar chart
       const chartData = useMemo(() => {
-        return orderedManagers.map(mgr => {
+        return (managers || []).map(mgr => {
           let wins = 0;
           let eliminated = false;
           const picksSorted = [...(mgr.picks || [])].sort((a, b) => Number(a.week) - Number(b.week));
@@ -837,13 +837,19 @@
                 continue;
               }
             }
-            // Fallback to stored result only if no live final
-            if (p.result === 'W') wins += 1;
-            else if (p.result === 'L') { eliminated = true; }
+            // Fallback to stored result only if no live final and week has ended
+            const wd = preseasonSchedule.find(w => Number(w.week) === wk);
+            if (wd) {
+              const { end } = getWeekRange(wd);
+              if (end && end.getTime() <= Date.now()) {
+                if (p.result === 'W') wins += 1;
+                else if (p.result === 'L') { eliminated = true; }
+              }
+            }
           }
           return { name: mgr.name, wins };
         });
-      }, [orderedManagers, games, preseasonSchedule]);
+      }, [managers, games, preseasonSchedule]);
 
       // Map of scoreboard by matchup string and sorted events for display
       const scoreboardMap = useMemo(() => {
@@ -886,6 +892,7 @@
       // Chart.js reference
       const chartRef = useRef(null);
       const chartInstance = useRef(null);
+      const prevChartSigRef = useRef('');
 
       // Render or update the bar chart (lazy when chartOpen)
       useEffect(() => {
@@ -893,103 +900,107 @@
           if (chartInstance.current) {
             chartInstance.current.destroy();
             chartInstance.current = null;
+            prevChartSigRef.current = '';
           }
           return;
         }
         if (!chartRef.current || chartData.length === 0) return;
         const ctx = chartRef.current.getContext('2d');
-        
-        // Destroy any existing chart
-        if (chartInstance.current) {
-          chartInstance.current.destroy();
-        }
-        
-        // Debug current chart data
-        try { console.debug('Survival chartData:', chartData); } catch (_) {}
-        const maxValue = chartData.length ? Math.max(...chartData.map(d => Number(d.wins) || 0)) : 0;
-        const weeksCap = (calendar && calendar.totalWeeks) || (preseasonSchedule && preseasonSchedule.length) || 3;
+
+        const labels = chartData.map(item => item.name);
+        const data = chartData.map(item => Number(item.wins) || 0);
+        const signature = JSON.stringify({ labels, data });
+        const maxValue = data.length ? Math.max(...data) : 0;
+        const weeksCap = (preseasonSchedule && preseasonSchedule.length) || 3;
         const yMax = Math.max(1, weeksCap, maxValue);
-        chartInstance.current = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: chartData.map(item => item.name),
-            datasets: [
-              {
-                label: 'Survived Weeks',
-                data: chartData.map(item => Number(item.wins) || 0),
-                backgroundColor: chartData.map((_, idx) => 
-                  orderedManagers[idx].draftOrder === 1 ? 'rgba(253, 224, 71, 0.8)' : 'rgba(99, 102, 241, 0.7)'
-                ),
-                borderColor: chartData.map((_, idx) => 
-                  orderedManagers[idx].draftOrder === 1 ? 'rgba(253, 224, 71, 1)' : 'rgba(99, 102, 241, 1)'
-                ),
-                borderWidth: 0,
-                borderRadius: 5
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-              x: {
-                ticks: { color: '#fff', font: { size: 12 } },
-                grid: { display: false }
-              },
-              y: {
-                beginAtZero: true,
-                max: yMax,
-                ticks: { 
-                  color: '#fff', 
-                  font: { size: 12 }, 
-                  stepSize: 1,
-                  callback: function(value) {
-                    return value;
-                  }
-                },
-                grid: { color: 'rgba(255, 255, 255, 0.2)' }
-              }
+
+        if (!chartInstance.current) {
+          // Create chart once
+          chartInstance.current = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: 'Survived Weeks',
+                  data,
+                  backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                  borderColor: 'rgba(99, 102, 241, 1)',
+                  borderWidth: 0,
+                  borderRadius: 5
+                }
+              ]
             },
-            plugins: {
-              legend: {
-                labels: {
-                  color: '#fff',
-                  // Force legend swatch to match the default bar color (purple),
-                  // not the first bar's color (which may be yellow for the leader)
-                  generateLabels(chart) {
-                    const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
-                    return original.map(l => ({
-                      ...l,
-                      fillStyle: 'rgba(99, 102, 241, 0.7)',
-                      strokeStyle: 'rgba(99, 102, 241, 1)'
-                    }));
-                  }
+            options: {
+              animation: false,
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  ticks: { color: '#fff', font: { size: 12 } },
+                  grid: { display: false }
+                },
+                y: {
+                  beginAtZero: true,
+                  max: yMax,
+                  ticks: {
+                    color: '#fff',
+                    font: { size: 12 },
+                    stepSize: 1,
+                    callback: function(value) { return value; }
+                  },
+                  grid: { color: 'rgba(255, 255, 255, 0.2)' }
                 }
               },
-              tooltip: {
-                backgroundColor: 'rgba(255,255,255,0.9)',
-                titleColor: '#000',
-                bodyColor: '#000',
-                borderColor: 'rgba(0,0,0,0.1)',
-                borderWidth: 1,
-                callbacks: {
-                  label: function(context) {
-                    return `Survived: ${context.raw} week${context.raw !== 1 ? 's' : ''}`;
+              plugins: {
+                legend: {
+                  labels: {
+                    color: '#fff'
+                  }
+                },
+                tooltip: {
+                  backgroundColor: 'rgba(255,255,255,0.9)',
+                  titleColor: '#000',
+                  bodyColor: '#000',
+                  borderColor: 'rgba(0,0,0,0.1)',
+                  borderWidth: 1,
+                  callbacks: {
+                    label: function(context) {
+                      return `Survived: ${context.raw} week${context.raw !== 1 ? 's' : ''}`;
+                    }
                   }
                 }
               }
             }
+          });
+          
+          prevChartSigRef.current = signature;
+          return;
+        }
+
+        // Update existing chart only when data/labels actually change
+        if (prevChartSigRef.current !== signature) {
+          const chart = chartInstance.current;
+          chart.data.labels = labels;
+          chart.data.datasets[0].data = data;
+          if (chart.options && chart.options.scales && chart.options.scales.y) {
+            chart.options.scales.y.max = yMax;
           }
-        });
-        
+          chart.update('none');
+          prevChartSigRef.current = signature;
+        } else {
+          // Keep yMax in sync even if data unchanged
+          const chart = chartInstance.current;
+          if (chart && chart.options && chart.options.scales && chart.options.scales.y) {
+            chart.options.scales.y.max = yMax;
+          }
+        }
+
         // Cleanup
         return () => {
-          if (chartInstance.current) {
-            chartInstance.current.destroy();
-            chartInstance.current = null;
-          }
+          // Do not destroy here; only when chartOpen flips to false or component unmounts
         };
-      }, [chartOpen, chartData, orderedManagers, calendar]);
+      }, [chartOpen, chartData, preseasonSchedule]);
 
       if (loading) {
         return (
