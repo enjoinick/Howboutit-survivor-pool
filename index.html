@@ -810,10 +810,24 @@
       // Memoized calendar snapshot for renders
       const calendar = React.useMemo(() => computeCalendarState(preseasonSchedule), [preseasonSchedule, lastUpdated]);
       // Build data for bar chart
-      const chartData = useMemo(() => orderedManagers.map(mgr => {
-        const wins = mgr.picks.filter(p => p.result === 'W').length;
-        return { name: mgr.name, wins };
-      }), [orderedManagers]);
+      const chartData = useMemo(() => {
+        return orderedManagers.map(mgr => {
+          let wins = 0;
+          for (const p of (mgr.picks || [])) {
+            if (!p) continue;
+            const { team, week } = p;
+            if (team && week) {
+              const outcome = getTeamOutcomeForWeek(team, week);
+              if (outcome && outcome.state === 'post') {
+                if (outcome.isWinner && !outcome.isTie) wins += 1;
+                continue; // live-final handled; skip fallback
+              }
+            }
+            if (p.result === 'W') wins += 1;
+          }
+          return { name: mgr.name, wins };
+        });
+      }, [orderedManagers, games, preseasonSchedule]);
 
       // Map of scoreboard by matchup string and sorted events for display
       const scoreboardMap = useMemo(() => {
