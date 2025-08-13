@@ -643,6 +643,12 @@
       // Calculate cumulative margin from all winning weeks (live-reactive)
       const getCumulativeMargin = (mgr) => {
         if (!mgr || !mgr.picks) return 0;
+        
+        // Buyback carry margin: use fixed margin if provided (e.g., from previous wins before buyback)
+        if (mgr && mgr.buyback === true && typeof mgr.carryMargin === 'number') {
+          return mgr.carryMargin;
+        }
+        
         let totalMargin = 0;
         for (const pick of mgr.picks) {
           const wk = Number(pick.week);
@@ -680,15 +686,18 @@
           // For survivors, use the CURRENT active week's margin to rank winners of completed games above others
           const tieWeek = derived.isEliminated ? Number(derived.week) : Number(activeWeek);
           const weekMargin = getWeekMargin(mgr, tieWeek);
-          return { ...mgr, eliminationWeek, weekMargin };
+          const cumulativeMargin = getCumulativeMargin(mgr);
+          return { ...mgr, eliminationWeek, weekMargin, cumulativeMargin };
         });
         return withKeys
           .sort((a, b) => {
             // 1) Later elimination week first (survivors have totalWeeks+1)
             if (a.eliminationWeek !== b.eliminationWeek) return b.eliminationWeek - a.eliminationWeek;
-            // 2) Larger margin that week higher
+            // 2) Larger cumulative margin higher (primary tiebreaker)
+            if (a.cumulativeMargin !== b.cumulativeMargin) return b.cumulativeMargin - a.cumulativeMargin;
+            // 3) Larger week margin higher (secondary tiebreaker for current week performance)
             if (a.weekMargin !== b.weekMargin) return b.weekMargin - a.weekMargin;
-            // 3) Better last year rank (smaller number is better)
+            // 4) Better last year rank (smaller number is better)
             return a.lastYearRank - b.lastYearRank;
           })
           .map((mgr, idx) => ({ ...mgr, draftOrder: idx + 1 }));
