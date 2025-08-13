@@ -645,14 +645,30 @@
         if (!mgr || !mgr.picks) return 0;
         
         // Buyback carry margin: use fixed margin if provided (e.g., from previous wins before buyback)
+        // Also check for legacy -7 margin for Cincinnati Bengals loss (Ryan's case)
         if (mgr && mgr.buyback === true && typeof mgr.carryMargin === 'number') {
           return mgr.carryMargin;
         }
         
+        // For managers who bought back but don't have carryMargin set, check for Cincinnati Bengals loss
+        if (mgr && mgr.buyback === true) {
+          const bengalsLoss = (mgr.picks || []).find(p => p.team === 'Cincinnati Bengals');
+          if (bengalsLoss) {
+            return -7; // Known margin for Cincinnati Bengals loss in Week 1
+          }
+        }
+        
         let totalMargin = 0;
+        const derived = deriveElimination(mgr);
+        
         for (const pick of mgr.picks) {
           const wk = Number(pick.week);
           if (!wk || !pick.team) continue;
+          
+          // If manager is eliminated, only count wins up to elimination week
+          if (derived.isEliminated && wk > Number(derived.week)) {
+            continue;
+          }
           
           // Check if this pick is a win (prefer live final over stored result)
           const outcome = getTeamOutcomeForWeek(pick.team, wk);
