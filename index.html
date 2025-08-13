@@ -640,6 +640,36 @@
         return 0;
       };
 
+      // Calculate cumulative margin from all winning weeks (live-reactive)
+      const getCumulativeMargin = (mgr) => {
+        if (!mgr || !mgr.picks) return 0;
+        let totalMargin = 0;
+        for (const pick of mgr.picks) {
+          const wk = Number(pick.week);
+          if (!wk || !pick.team) continue;
+          
+          // Check if this pick is a win (prefer live final over stored result)
+          const outcome = getTeamOutcomeForWeek(pick.team, wk);
+          let isWin = false;
+          let margin = 0;
+          
+          if (outcome && outcome.state === 'post') {
+            // Use live final result and margin
+            isWin = outcome.isWinner && !outcome.isTie;
+            margin = isWin ? ((outcome.score - outcome.oppScore) || 0) : 0;
+          } else {
+            // Fallback to stored result and margin
+            isWin = pick.result === 'W';
+            margin = (isWin && typeof pick.margin === 'number') ? pick.margin : 0;
+          }
+          
+          if (isWin) {
+            totalMargin += margin;
+          }
+        }
+        return totalMargin;
+      };
+
       // Draft order per provided rules (live-reactive)
       const computeDraftOrderLive = (mgrs) => {
         const totalWeeks = preseasonSchedule.length || 0;
@@ -1226,7 +1256,7 @@
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="text-sm">Margin:</span>
-                          <span className="font-bold">{typeof mgr.weekMargin === 'number' ? mgr.weekMargin : 0}</span>
+                          <span className="font-bold">{getCumulativeMargin(mgr)}</span>
                         </div>
                       </div>
                     </div>
