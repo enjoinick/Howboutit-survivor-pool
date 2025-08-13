@@ -105,6 +105,8 @@
       "name": "Ryan",
       "teamLabel": "Quail Man SWAG",
       "lastYearRank": 5,
+      "buyback": true,
+      "carryMargin": -7,
       "picks": [
         {
           "week": 1,
