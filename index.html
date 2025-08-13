@@ -661,14 +661,52 @@
         let totalMargin = 0;
         const derived = deriveElimination(mgr);
         
+        // For eliminated managers with no wins, show their elimination loss margin
+        if (derived.isEliminated) {
+          let hasWins = false;
+          for (const pick of mgr.picks) {
+            const wk = Number(pick.week);
+            if (!wk || !pick.team) continue;
+            if (wk > Number(derived.week)) continue;
+            
+            const outcome = getTeamOutcomeForWeek(pick.team, wk);
+            let isWin = false;
+            let margin = 0;
+            
+            if (outcome && outcome.state === 'post') {
+              isWin = outcome.isWinner && !outcome.isTie;
+              margin = isWin ? ((outcome.score - outcome.oppScore) || 0) : 0;
+            } else {
+              isWin = pick.result === 'W';
+              margin = (isWin && typeof pick.margin === 'number') ? pick.margin : 0;
+            }
+            
+            if (isWin) {
+              hasWins = true;
+              totalMargin += margin;
+            }
+          }
+          
+          // If no wins, show the elimination loss margin
+          if (!hasWins && totalMargin === 0) {
+            const eliminationPick = (mgr.picks || []).find(p => Number(p.week) === Number(derived.week));
+            if (eliminationPick && eliminationPick.team) {
+              const outcome = getTeamOutcomeForWeek(eliminationPick.team, eliminationPick.week);
+              if (outcome && outcome.state === 'post' && !outcome.isWinner && !outcome.isTie) {
+                return (outcome.score - outcome.oppScore) || 0; // Negative margin for loss
+              } else if (eliminationPick.result === 'L' && typeof eliminationPick.margin === 'number') {
+                return eliminationPick.margin; // Should be negative
+              }
+            }
+          }
+          
+          return totalMargin;
+        }
+        
+        // For active managers, calculate cumulative wins
         for (const pick of mgr.picks) {
           const wk = Number(pick.week);
           if (!wk || !pick.team) continue;
-          
-          // If manager is eliminated, only count wins up to elimination week
-          if (derived.isEliminated && wk > Number(derived.week)) {
-            continue;
-          }
           
           // Check if this pick is a win (prefer live final over stored result)
           const outcome = getTeamOutcomeForWeek(pick.team, wk);
