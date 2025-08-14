@@ -40,7 +40,7 @@
           "result": "W",
           "manualResult": true,
           "lastUpdated": "2025-08-14T14:04:27.035Z",
-          "margin": 7
+          "margin": 3
         },
         {
           "week": 2,
@@ -294,19 +294,64 @@
     "week1": [
       {
         "date": "2025-08-07",
-        "matchup": "Chicago Bears at Houston Texans", 
-        "homeTeam": "Houston Texans",
-        "awayTeam": "Chicago Bears",
-        "homeScore": 17,
-        "awayScore": 21,
-        "winner": "Chicago Bears",
-        "note": "Game shortened due to weather"
+        "matchup": "Indianapolis Colts at Baltimore Ravens",
+        "homeTeam": "Baltimore Ravens",
+        "awayTeam": "Indianapolis Colts",
+        "homeScore": 24,
+        "awayScore": 16,
+        "winner": "Baltimore Ravens"
       },
       {
-        "date": "2025-08-09", 
+        "date": "2025-08-07",
+        "matchup": "Cincinnati Bengals at Philadelphia Eagles",
+        "homeTeam": "Philadelphia Eagles",
+        "awayTeam": "Cincinnati Bengals",
+        "homeScore": 34,
+        "awayScore": 27,
+        "winner": "Philadelphia Eagles"
+      },
+      {
+        "date": "2025-08-07",
+        "matchup": "Las Vegas Raiders at Seattle Seahawks",
+        "homeTeam": "Seattle Seahawks",
+        "awayTeam": "Las Vegas Raiders",
+        "homeScore": 23,
+        "awayScore": 23,
+        "winner": "Tie"
+      },
+      {
+        "date": "2025-08-08",
+        "matchup": "Cleveland Browns at Carolina Panthers",
+        "homeTeam": "Carolina Panthers",
+        "awayTeam": "Cleveland Browns",
+        "homeScore": 10,
+        "awayScore": 30,
+        "winner": "Cleveland Browns"
+      },
+      {
+        "date": "2025-08-08",
+        "matchup": "Detroit Lions at Atlanta Falcons",
+        "homeTeam": "Atlanta Falcons",
+        "awayTeam": "Detroit Lions",
+        "homeScore": 10,
+        "awayScore": 17,
+        "winner": "Detroit Lions",
+        "note": "Game ended early"
+      },
+      {
+        "date": "2025-08-08",
+        "matchup": "Washington Commanders at New England Patriots",
+        "homeTeam": "New England Patriots",
+        "awayTeam": "Washington Commanders",
+        "homeScore": 48,
+        "awayScore": 18,
+        "winner": "New England Patriots"
+      },
+      {
+        "date": "2025-08-09",
         "matchup": "New York Giants at Buffalo Bills",
         "homeTeam": "Buffalo Bills",
-        "awayTeam": "New York Giants", 
+        "awayTeam": "New York Giants",
         "homeScore": 25,
         "awayScore": 34,
         "winner": "New York Giants"
@@ -314,15 +359,15 @@
       {
         "date": "2025-08-09",
         "matchup": "Houston Texans at Minnesota Vikings",
-        "homeTeam": "Minnesota Vikings", 
+        "homeTeam": "Minnesota Vikings",
         "awayTeam": "Houston Texans",
-        "homeScore": 10,
-        "awayScore": 20,
+        "homeScore": 20,
+        "awayScore": 10,
         "winner": "Minnesota Vikings"
       },
       {
         "date": "2025-08-09",
-        "matchup": "Pittsburgh Steelers at Jacksonville Jaguars", 
+        "matchup": "Pittsburgh Steelers at Jacksonville Jaguars",
         "homeTeam": "Jacksonville Jaguars",
         "awayTeam": "Pittsburgh Steelers",
         "homeScore": 25,
@@ -330,121 +375,67 @@
         "winner": "Pittsburgh Steelers"
       },
       {
-        "date": "2025-08-10",
-        "matchup": "Cleveland Browns at Carolina Panthers",
-        "homeTeam": "Carolina Panthers", 
-        "awayTeam": "Cleveland Browns",
-        "homeScore": 10,
-        "awayScore": 24,
-        "winner": "Cleveland Browns"
-      },
-      {
-        "date": "2025-08-07",
-        "matchup": "Indianapolis Colts at Baltimore Ravens",
-        "homeTeam": "Baltimore Ravens",
-        "awayTeam": "Indianapolis Colts", 
+        "date": "2025-08-09",
+        "matchup": "Tennessee Titans at Tampa Bay Buccaneers",
+        "homeTeam": "Tampa Bay Buccaneers",
+        "awayTeam": "Tennessee Titans",
         "homeScore": 29,
-        "awayScore": 16,
-        "winner": "Baltimore Ravens"
-      },
-      {
-        "date": "2025-08-10", 
-        "matchup": "New Orleans Saints at Los Angeles Chargers",
-        "homeTeam": "Los Angeles Chargers",
-        "awayTeam": "New Orleans Saints",
-        "homeScore": 17,
-        "awayScore": 24,
-        "winner": "Los Angeles Chargers"
+        "awayScore": 7,
+        "winner": "Tampa Bay Buccaneers"
       },
       {
         "date": "2025-08-09",
-        "matchup": "Tennessee Titans at Tampa Bay Buccaneers", 
-        "homeTeam": "Tampa Bay Buccaneers",
-        "awayTeam": "Tennessee Titans",
-        "homeScore": 14,
+        "matchup": "Kansas City Chiefs at Arizona Cardinals",
+        "homeTeam": "Arizona Cardinals",
+        "awayTeam": "Kansas City Chiefs",
+        "homeScore": 20,
         "awayScore": 17,
-        "winner": "Tennessee Titans"
+        "winner": "Arizona Cardinals"
       },
       {
-        "date": "2025-08-10", 
-        "matchup": "Miami Dolphins at Chicago Bears",
-        "homeTeam": "Chicago Bears",
-        "awayTeam": "Miami Dolphins",
-        "homeScore": 10,
-        "awayScore": 13,
-        "winner": "Chicago Bears"
-      },
-      {
-        "date": "2025-08-10",
-        "matchup": "Denver Broncos at San Francisco 49ers",
-        "homeTeam": "San Francisco 49ers", 
-        "awayTeam": "Denver Broncos",
-        "homeScore": 17,
-        "awayScore": 20,
-        "winner": "Denver Broncos"
-      },
-      {
-        "date": "2025-08-07",
-        "matchup": "Cincinnati Bengals at Philadelphia Eagles",
-        "homeTeam": "Philadelphia Eagles",
-        "awayTeam": "Cincinnati Bengals", 
-        "homeScore": 27,
-        "awayScore": 20,
-        "winner": "Philadelphia Eagles"
-      },
-      {
-        "date": "2025-08-10",
+        "date": "2025-08-09",
         "matchup": "New York Jets at Green Bay Packers",
         "homeTeam": "Green Bay Packers",
-        "awayTeam": "New York Jets", 
-        "homeScore": 20,
-        "awayScore": 23,
+        "awayTeam": "New York Jets",
+        "homeScore": 10,
+        "awayScore": 30,
         "winner": "New York Jets"
       },
       {
-        "date": "2025-08-10",
-        "matchup": "Dallas Cowboys at Los Angeles Rams", 
+        "date": "2025-08-09",
+        "matchup": "Denver Broncos at San Francisco 49ers",
+        "homeTeam": "San Francisco 49ers",
+        "awayTeam": "Denver Broncos",
+        "homeScore": 9,
+        "awayScore": 30,
+        "winner": "Denver Broncos"
+      },
+      {
+        "date": "2025-08-09",
+        "matchup": "Dallas Cowboys at Los Angeles Rams",
         "homeTeam": "Los Angeles Rams",
         "awayTeam": "Dallas Cowboys",
-        "homeScore": 16,
-        "awayScore": 19,
+        "homeScore": 31,
+        "awayScore": 21,
         "winner": "Los Angeles Rams"
       },
       {
         "date": "2025-08-10",
-        "matchup": "Arizona Cardinals at Kansas City Chiefs",
-        "homeTeam": "Kansas City Chiefs",
-        "awayTeam": "Arizona Cardinals", 
-        "homeScore": 17,
-        "awayScore": 21,
-        "winner": "Arizona Cardinals"
+        "matchup": "New Orleans Saints at Los Angeles Chargers",
+        "homeTeam": "Los Angeles Chargers",
+        "awayTeam": "New Orleans Saints",
+        "homeScore": 27,
+        "awayScore": 13,
+        "winner": "Los Angeles Chargers"
       },
       {
         "date": "2025-08-10",
-        "matchup": "Las Vegas Raiders at Seattle Seahawks", 
-        "homeTeam": "Seattle Seahawks",
-        "awayTeam": "Las Vegas Raiders",
+        "matchup": "Miami Dolphins at Chicago Bears",
+        "homeTeam": "Chicago Bears",
+        "awayTeam": "Miami Dolphins",
         "homeScore": 24,
-        "awayScore": 20,
-        "winner": "Seattle Seahawks"
-      },
-      {
-        "date": "2025-08-10",
-        "matchup": "Detroit Lions at Atlanta Falcons",
-        "homeTeam": "Atlanta Falcons", 
-        "awayTeam": "Detroit Lions",
-        "homeScore": 24,
-        "awayScore": 27,
-        "winner": "Detroit Lions"
-      },
-      {
-        "date": "2025-08-10",
-        "matchup": "Washington Commanders at New England Patriots",
-        "homeTeam": "New England Patriots",
-        "awayTeam": "Washington Commanders", 
-        "homeScore": 17,
-        "awayScore": 20,
-        "winner": "New England Patriots"
+        "awayScore": 24,
+        "winner": "Tie"
       }
     ]
   },

@@ -349,7 +349,7 @@
         }
       };
 
-      // Save current jsonData to configured Gist
+      // Save current complete data to configured Gist
       const saveToGist = async () => {
         // Fallback to localStorage and trim before validation
         const id = (gistId || localStorage.getItem('gistId') || '').trim();
@@ -363,9 +363,17 @@
         try {
           setIsSaving(true);
           console.log('Saving to Gist...', { id: id.slice(0,4) + '...' + id.slice(-4), tokenLength: token.length });
+          
+          // Ensure we save the complete data structure including gameResults
+          const dataToSave = {
+            ...completeData,
+            managers: managers,
+            lastUpdated: new Date().toISOString()
+          };
+          
           const payload = {
             files: {
-              'data.json': { content: jsonData }
+              'data.json': { content: JSON.stringify(dataToSave, null, 2) }
             }
           };
           const res = await fetch(`https://api.github.com/gists/${id}`, {
