@@ -1476,11 +1476,27 @@
                         return pick && pick.team && (pick.team.trim() !== '' && (pick.team === awayTeam || pick.team === homeTeam));
                       });
                       
+                      // Check if we have stored results from manager picks when ESPN API doesn't have the game
+                      let displayTime = `${game.time}`;
+                      if (score && score.state === 'post') {
+                        displayTime = `Final ${score.awayScore}–${score.homeScore}`;
+                      } else {
+                        // Check if any manager has a completed result for either team in this week
+                        const completedPicks = managersWithPick.filter(mgr => {
+                          const pick = mgr.picks.find(p => p.week === week.week);
+                          return pick && (pick.result === 'W' || pick.result === 'L') && pick.margin !== undefined;
+                        });
+                        
+                        if (completedPicks.length > 0) {
+                          displayTime = `Final`;
+                        }
+                      }
+                      
                       return (
                         <tr key={`${week.week}-${idx}`} className={idx % 2 === 0 ? 'bg-purple-700/30' : 'bg-purple-700/20'}>
                           <td className="p-2 text-center">{week.week}</td>
                           <td className="p-2 text-center">{game.date}</td>
-                          <td className="p-2 text-center">{score && score.state === 'post' ? `Final ${score.awayScore}–${score.homeScore}` : `${game.time}`}</td>
+                          <td className="p-2 text-center">{displayTime}</td>
                           <td className="p-2">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{awayTeam}</span>
@@ -1495,9 +1511,14 @@
                                   const pick = manager.picks.find(p => p.week === week.week);
                                   const outcome = pick && pick.team ? getTeamOutcomeForWeek(pick.team, week.week) : null;
                                   let cls = 'bg-gray-500/60';
+                                  
+                                  // Check live outcome first, then fallback to stored result
                                   if (outcome && outcome.state === 'post') {
                                     cls = outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
+                                  } else if (pick && (pick.result === 'W' || pick.result === 'L')) {
+                                    cls = pick.result === 'W' ? 'bg-green-500/60' : 'bg-red-500/60';
                                   }
+                                  
                                   return (
                                     <span 
                                       key={mgrIdx}
@@ -1547,10 +1568,25 @@
                             const pick = manager.picks.find(p => p.week === week.week);
                             return pick && pick.team && (pick.team.trim() !== '' && (pick.team === awayTeam || pick.team === homeTeam));
                           });
+                          let displayTime = `${game.time} ET`;
+                          if (score && score.state === 'post') {
+                            displayTime = `Final ${score.awayScore}–${score.homeScore}`;
+                          } else {
+                            // Check if any manager has a completed result for either team in this week
+                            const completedPicks = managersWithPick.filter(mgr => {
+                              const pick = mgr.picks.find(p => p.week === week.week);
+                              return pick && (pick.result === 'W' || pick.result === 'L') && pick.margin !== undefined;
+                            });
+                            
+                            if (completedPicks.length > 0) {
+                              displayTime = `Final`;
+                            }
+                          }
+                          
                           return (
                             <div key={`${week.week}-m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
                               <div className="flex items-center justify-between text-sm">
-                                <div className="font-semibold">{score && score.state === 'post' ? `Final ${score.awayScore}–${score.homeScore}` : `${game.time} ET`}</div>
+                                <div className="font-semibold">{displayTime}</div>
                                 <div className="text-xs text-purple-200">{game.date}</div>
                               </div>
                               <div className="mt-1 font-medium">

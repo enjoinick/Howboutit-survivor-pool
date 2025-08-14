@@ -8,15 +8,17 @@
         {
           "week": 1,
           "team": "Tampa Bay Buccaneers",
-          "result": null,
+          "result": "W",
           "manualResult": true,
-          "lastUpdated": "2025-08-07T19:20:25.592Z",
-          "margin": 0
+          "lastUpdated": "2025-08-14T14:04:07.163Z",
+          "margin": 22
         },
         {
           "week": 2,
-          "team": "",
-          "result": null
+          "team": "Detroit Lions",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:04:15.306Z"
         },
         {
           "week": 3,
@@ -25,7 +27,7 @@
         }
       ],
       "eliminated": false,
-      "marginOfVictory": 0
+      "marginOfVictory": 22
     },
     {
       "name": "Josh",
@@ -35,12 +37,17 @@
         {
           "week": 1,
           "team": "Detroit Lions",
-          "result": null
+          "result": "W",
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:04:27.035Z",
+          "margin": 7
         },
         {
           "week": 2,
-          "team": "",
-          "result": null
+          "team": "Indianapolis Colts",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:07:28.580Z"
         },
         {
           "week": 3,
@@ -49,7 +56,7 @@
         }
       ],
       "eliminated": false,
-      "marginOfVictory": 10
+      "marginOfVictory": 7
     },
     {
       "name": "Kevin",
@@ -59,12 +66,17 @@
         {
           "week": 1,
           "team": "Baltimore Ravens",
-          "result": null
+          "result": "W",
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:07:16.968Z",
+          "margin": 8
         },
         {
           "week": 2,
-          "team": "",
-          "result": null
+          "team": "Cleveland Browns",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:07:12.548Z"
         },
         {
           "week": 3,
@@ -73,7 +85,7 @@
         }
       ],
       "eliminated": false,
-      "marginOfVictory": 10
+      "marginOfVictory": 8
     },
     {
       "name": "Austin",
@@ -83,9 +95,10 @@
         {
           "week": 1,
           "team": "Carolina Panthers",
-          "result": null,
+          "result": "L",
           "manualResult": true,
-          "lastUpdated": "2025-08-07T19:12:09.114Z"
+          "lastUpdated": "2025-08-14T14:10:11.370Z",
+          "margin": -20
         },
         {
           "week": 2,
@@ -98,7 +111,8 @@
           "result": null
         }
       ],
-      "eliminated": false,
+      "eliminated": true,
+      "eliminatedWeek": 1,
       "marginOfVictory": 0
     },
     {
@@ -111,14 +125,17 @@
         {
           "week": 1,
           "team": "Cincinnati Bengals",
-          "result": null,
+          "result": "L",
           "manualResult": true,
-          "lastUpdated": "2025-08-07T19:11:59.434Z"
+          "lastUpdated": "2025-08-14T14:07:41.113Z",
+          "margin": -7
         },
         {
           "week": 2,
-          "team": "",
-          "result": null
+          "team": "Denver Broncos",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:07:45.839Z"
         },
         {
           "week": 3,
@@ -126,7 +143,7 @@
           "result": null
         }
       ],
-      "eliminated": false,
+      "eliminated": true,
       "marginOfVictory": 0
     },
     {
@@ -137,7 +154,10 @@
         {
           "week": 1,
           "team": "Jacksonville Jaguars",
-          "result": null
+          "result": "L",
+          "margin": -6,
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:09:10.152Z"
         },
         {
           "week": 2,
@@ -150,8 +170,9 @@
           "result": null
         }
       ],
-      "eliminated": false,
-      "marginOfVictory": 10
+      "eliminated": true,
+      "eliminatedWeek": 1,
+      "marginOfVictory": 0
     },
     {
       "name": "Jordan",
@@ -161,7 +182,39 @@
         {
           "week": 1,
           "team": "Cleveland Browns",
+          "result": "W",
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:05:26.191Z",
+          "margin": 20
+        },
+        {
+          "week": 2,
+          "team": "Houston Texans",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:05:24.487Z"
+        },
+        {
+          "week": 3,
+          "team": "",
           "result": null
+        }
+      ],
+      "eliminated": false,
+      "marginOfVictory": 20
+    },
+    {
+      "name": "Matt",
+      "teamLabel": "DELTA 8",
+      "lastYearRank": 8,
+      "picks": [
+        {
+          "week": 1,
+          "team": "Houston Texans",
+          "result": "L",
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:08:37.050Z",
+          "margin": -10
         },
         {
           "week": 2,
@@ -174,25 +227,29 @@
           "result": null
         }
       ],
-      "eliminated": false,
-      "marginOfVictory": 10
+      "eliminated": true,
+      "eliminatedWeek": 1,
+      "marginOfVictory": 0
     },
     {
-      "name": "Matt",
-      "teamLabel": "DELTA 8",
-      "lastYearRank": 8,
+      "name": "Nick",
+      "teamLabel": "Allen's Dirty Brown Kupp",
+      "lastYearRank": 9,
       "picks": [
         {
           "week": 1,
-          "team": "Houston Texans",
-          "result": null,
+          "team": "Las Vegas Raiders",
+          "result": "W",
           "manualResult": true,
-          "lastUpdated": "2025-08-07T19:12:03.130Z"
+          "lastUpdated": "2025-08-14T14:06:09.857Z",
+          "margin": 0
         },
         {
           "week": 2,
-          "team": "",
-          "result": null
+          "team": "New England Patriots",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:06:14.888Z"
         },
         {
           "week": 3,
@@ -204,30 +261,6 @@
       "marginOfVictory": 0
     },
     {
-      "name": "Nick",
-      "teamLabel": "Allen's Dirty Brown Kupp",
-      "lastYearRank": 9,
-      "picks": [
-        {
-          "week": 1,
-          "team": "Las Vegas Raiders",
-          "result": null
-        },
-        {
-          "week": 2,
-          "team": "",
-          "result": null
-        },
-        {
-          "week": 3,
-          "team": "",
-          "result": null
-        }
-      ],
-      "eliminated": false,
-      "marginOfVictory": 10
-    },
-    {
       "name": "William",
       "teamLabel": "Just Win Baby",
       "lastYearRank": 10,
@@ -235,12 +268,17 @@
         {
           "week": 1,
           "team": "Philadelphia Eagles",
-          "result": null
+          "result": "W",
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:05:56.427Z",
+          "margin": 7
         },
         {
           "week": 2,
-          "team": "",
-          "result": null
+          "team": "New York Giants",
+          "result": null,
+          "manualResult": true,
+          "lastUpdated": "2025-08-14T14:05:51.392Z"
         },
         {
           "week": 3,
@@ -249,8 +287,8 @@
         }
       ],
       "eliminated": false,
-      "marginOfVictory": 10
+      "marginOfVictory": 7
     }
   ],
-  "lastUpdated": "2025-08-07T19:20:25.592Z"
+  "lastUpdated": "2025-08-14T14:10:11.370Z"
 }
