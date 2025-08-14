@@ -215,6 +215,7 @@
     function App() {
       const [managers, setManagers] = useState([]);
       const [games, setGames] = useState([]);
+      const [gameResults, setGameResults] = useState({});
       const [loading, setLoading] = useState(true);
       const [lastUpdated, setLastUpdated] = useState('');
       const [refreshing, setRefreshing] = useState(false);
@@ -391,6 +392,7 @@
             if (!res.ok) throw new Error(`Gist raw fetch failed: ${res.status}`);
             const data = await res.json();
             setManagers(data.managers || []);
+            setGameResults(data.gameResults || {});
             setLastUpdated(data.lastUpdated || '');
             setLoading(false);
             setRefreshing(false);
@@ -404,6 +406,7 @@
           const response = await fetch(`data.json?t=${timestamp}`);
           const data = await response.json();
           setManagers(data.managers || []);
+          setGameResults(data.gameResults || {});
           setLastUpdated(data.lastUpdated || '');
           setLoading(false);
           setRefreshing(false);
@@ -1476,9 +1479,16 @@
                         return pick && pick.team && (pick.team.trim() !== '' && (pick.team === awayTeam || pick.team === homeTeam));
                       });
                       
-                      // Check if we have stored results from manager picks when ESPN API doesn't have the game
+                      // Check stored game results first, then live scores, then fallback logic
                       let displayTime = `${game.time}`;
-                      if (score && score.state === 'post') {
+                      
+                      // Look for stored game result for this week
+                      const weekKey = `week${week.week}`;
+                      const storedGame = gameResults[weekKey] && gameResults[weekKey].find(g => g.matchup === game.matchup);
+                      
+                      if (storedGame) {
+                        displayTime = `Final ${storedGame.awayScore}–${storedGame.homeScore}`;
+                      } else if (score && score.state === 'post') {
                         displayTime = `Final ${score.awayScore}–${score.homeScore}`;
                       } else {
                         // Check if any manager has a completed result for either team in this week
@@ -1568,8 +1578,17 @@
                             const pick = manager.picks.find(p => p.week === week.week);
                             return pick && pick.team && (pick.team.trim() !== '' && (pick.team === awayTeam || pick.team === homeTeam));
                           });
+                          
+                          // Check stored game results first, then live scores, then fallback logic
                           let displayTime = `${game.time} ET`;
-                          if (score && score.state === 'post') {
+                          
+                          // Look for stored game result for this week
+                          const weekKey = `week${week.week}`;
+                          const storedGame = gameResults[weekKey] && gameResults[weekKey].find(g => g.matchup === game.matchup);
+                          
+                          if (storedGame) {
+                            displayTime = `Final ${storedGame.awayScore}–${storedGame.homeScore}`;
+                          } else if (score && score.state === 'post') {
                             displayTime = `Final ${score.awayScore}–${score.homeScore}`;
                           } else {
                             // Check if any manager has a completed result for either team in this week
@@ -1598,9 +1617,14 @@
                                     const pick = manager.picks.find(p => p.week === week.week);
                                     const outcome = pick && pick.team ? getTeamOutcomeForWeek(pick.team, week.week) : null;
                                     let cls = 'bg-gray-500/60';
+                                    
+                                    // Check live outcome first, then fallback to stored result
                                     if (outcome && outcome.state === 'post') {
                                       cls = outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
+                                    } else if (pick && (pick.result === 'W' || pick.result === 'L')) {
+                                      cls = pick.result === 'W' ? 'bg-green-500/60' : 'bg-red-500/60';
                                     }
+                                    
                                     return (
                                       <span key={mgrIdx} className={`px-2 py-0.5 rounded-full text-[11px] ${cls}`}>{manager.name}</span>
                                     );
