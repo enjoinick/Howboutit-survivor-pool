@@ -98,6 +98,7 @@
     function AdminPanel() {
       const [authenticated, setAuthenticated] = useState(false);
       const [managers, setManagers] = useState([]);
+      const [completeData, setCompleteData] = useState({});
       const [jsonData, setJsonData] = useState('');
       const [showJson, setShowJson] = useState(false);
       const [password, setPassword] = useState('');
@@ -196,6 +197,7 @@
             if (!res.ok) throw new Error(`Gist raw fetch failed: ${res.status}`);
             const data = await res.json();
             setManagers(data.managers || []);
+            setCompleteData(data);
             setJsonData(JSON.stringify(data, null, 2));
             setDirty(false);
             return;
@@ -207,6 +209,7 @@
           const res = await fetch(`data.json?t=${Date.now()}`);
           const data = await res.json();
           setManagers(data.managers || []);
+          setCompleteData(data);
           setJsonData(JSON.stringify(data, null, 2));
           setDirty(false);
         } catch (error) {
@@ -298,9 +301,11 @@
       
       const updateJsonData = (updatedManagers) => {
         const data = {
+          ...completeData,  // Preserve existing data like gameResults
           managers: updatedManagers,
           lastUpdated: new Date().toISOString()
         };
+        setCompleteData(data);
         setJsonData(JSON.stringify(data, null, 2));
         setDirty(true);
       };
