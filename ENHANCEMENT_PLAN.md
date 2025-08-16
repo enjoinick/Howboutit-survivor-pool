@@ -65,7 +65,7 @@ Phase 4 – Performance Polish
 ## Data & Logic Notes
 - `getCumulativeMargin(mgr)` now sums wins and includes elimination-week negative margin (fix for Week 2 cases like Chris/Josh).
 - Breakdown should include: week, team, outcome (W/L/T), margin diff, cumulative tally.
-- Notes sourced from `data.json -> gameResults.weekN[i].notes` where applicable.
+- Notes sourced from `data.json -> gameResults.weekN[i].note` where applicable.
 
 ## Testing
 - Add unit tests (optional) by extracting pure helpers to a JS module (e.g., `/lib/logic.js`):
@@ -93,9 +93,9 @@ Phase 4 – Performance Polish
 ## Task Checklist
 - [x] Status badges (Alive/Eliminated/Buyback)
 - [x] Margin breakdown tooltip
-- [ ] Collapsible per-week margins table
-- [ ] Game notes on schedule/manager rows
-- [ ] Pick lock indicators
+- [x] Collapsible per-week margins table
+- [x] Game notes on schedule/manager rows
+- [x] Pick lock indicators
 - [x] Admin JSON Schema validation
 - [x] Admin diff preview
 - [x] ESPN fetch retry/backoff
@@ -103,55 +103,13 @@ Phase 4 – Performance Polish
 - [ ] Throttle + memoize
 - [ ] Lazy-load audio + mute toggle
 
----
+-
+## Next Steps (immediate)
 
-## Acceptance Criteria (Feature-level)
-
-- **Status badges**
-  - Shows “Alive” (green) if not eliminated; “Eliminated W#” (red) with correct week number if eliminated; “Buyback” (purple) when `mgr.buyback === true`.
-  - Badges appear next to manager name in `index.html` manager cards and render consistently on mobile/desktop.
-
-- **Margin breakdown tooltip**
-  - Hovering over the “Margin” value shows a multiline tooltip listing each contributing week and the total.
-  - Eliminated managers include only wins up to elimination and the elimination-week negative margin exactly once.
-  - Tooltip matches the value of `getCumulativeMargin(mgr)`.
-
-- **Collapsible per-week margins table**
-  - Expanding a manager row reveals a table with columns: Week, Team, Result (W/L/T), Margin, Running Total.
-  - Values use live outcomes where available; ties/early endings are labeled.
-  - Table is responsive and does not exceed 300 lines of component code.
-
-- **Game notes on schedule/manager rows**
-  - If a game has `notes`, an info icon appears; hover or tap shows the note.
-  - Notes surface on both schedule cards and adjacent to the relevant pick in the manager’s list.
-
-- **Pick lock indicators**
-  - For the active week, picks are marked “Locked” once their game’s kickoff time has passed (UTC safe).
-  - Locked picks are visually distinct (e.g., lock icon + subdued style).
-
-- **Admin JSON Schema validation**
-  - On clicking Save in `admin.html`, data is validated; invalid fields produce inline, human-readable errors with field paths.
-  - Save is blocked until validation passes.
-
-- **Admin diff preview**
-  - Before saving, a unified diff shows additions/removals/changes for `data.json`.
-  - User can cancel or confirm. Confirm performs the Gist PATCH.
-
-- **ESPN fetch retry/backoff**
-  - On transient failures (network/5xx), retries up to N times with exponential backoff and jitter.
-  - After retries, app falls back to stored `gameResults` without console spam; a subtle banner can indicate stale/live fallback.
-
-- **Stale data banner**
-  - If `lastUpdated` age exceeds threshold (e.g., 10 minutes during games), show banner: “Data last updated Xm ago”.
-  - Banner disappears automatically when fresh data arrives.
-
-- **Throttle + memoize**
-  - Manual refresh cannot be spammed (cooldown e.g., 5s). Auto-refresh uses a sane interval.
-  - Expensive computations are memoized with stable deps; renders are smooth.
-
-- **Lazy-load audio + mute toggle**
-  - Audio assets load only on first interaction or when an easter egg triggers.
-  - A global mute toggle persists in `localStorage`.
+- **QA time parsing fallback**: Verify `preseasonSchedule.date/time` formatting against the ET fallback parser in `index.html` and adjust if needed. Consider adding ISO `kickoff` to `gameResults` for determinism.
+- **Performance polish**: Implement throttling for manual refresh and memoize expensive derived values (e.g., `orderedManagers`, draft order, weekly aggregations).
+- **Audio UX**: Lazy-load audio assets and add a global mute toggle persisted in `localStorage`.
+- **README updates**: Document the `note` field, lock logic precedence (live > schedule fallback), and how to provide kickoff times.
 
 ---
 
@@ -168,18 +126,19 @@ Phase 4 – Performance Polish
   - Render under existing Weekly Picks, behind the current expand toggle.
 
 - **Game notes mapping** (`data.json` → UI)
-  - Expect optional `notes` per game in `gameResults.weekN[i].notes`.
-  - In schedule cards and manager picks: if a pick’s team matches a game entry with `notes`, show an info icon with tooltip.
+  - Expect optional `note` per game in `gameResults.weekN[i].note`.
+  - In schedule cards and manager picks: if a pick’s team matches a game entry with `note`, show an info icon with tooltip.
 
 - **Pick lock indicators** (`index.html`)
-  - Use `computeCalendarState(preseasonSchedule)` for active week.
-  - For each pick in active week, compare current UTC time to that game’s kickoff UTC; if past, mark “Locked”.
+  - Determine lock via live outcome: if either team’s game state is not `pre`, consider locked.
+  - Fallback: parse ET kickoff from `preseasonSchedule` combining `date` + `time` with `-04:00` (DST). If current time ≥ kickoff, mark locked.
+  - Future improvement: store an explicit ISO `kickoff` in `gameResults` to avoid timezone ambiguity and handle DST transitions reliably.
   - Disable any UI affordance suggesting edit once locked (visual only if no edit controls exist for public view).
 
 - **Admin JSON Schema** (`admin.html`)
   - Define a client-side JSON Schema (Draft-07+). Key fields:
     - `managers[]`: `{ name: string, teamLabel?: string, picks: [{ week: number, team?: string, result?: 'W'|'L'|'T', margin?: number, manualResult?: boolean }] , buyback?: boolean, lastYearRank?: number }`
-    - `gameResults`: `{ [week: string]: [{ homeTeam: string, awayTeam: string, score?: number, oppScore?: number, isWinner?: boolean, isTie?: boolean, state?: 'pre'|'in'|'post', kickoff?: string, notes?: string }] }`
+    - `gameResults`: `{ [week: string]: [{ homeTeam: string, awayTeam: string, score?: number, oppScore?: number, isWinner?: boolean, isTie?: boolean, state?: 'pre'|'in'|'post', kickoff?: string, note?: string }] }`
     - `lastUpdated?: string (ISO)`
   - Validate with a lightweight validator (e.g., `ajv` via CDN) and display errors with JSON Pointer paths.
 
@@ -258,7 +217,7 @@ Phase 4 – Performance Polish
               "isTie": { "type": "boolean" },
               "state": { "type": "string", "enum": ["pre", "in", "post"] },
               "kickoff": { "type": "string", "format": "date-time" },
-              "notes": { "type": "string" }
+              "note": { "type": "string" }
             }
           }
         }

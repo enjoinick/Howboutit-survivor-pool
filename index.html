@@ -227,6 +227,8 @@
       const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan (GRAVEDIGGER)
       const westonAudioRef = useRef(null); // easter egg audio ref for Weston (DUUUVALL)
       const ryanAudioRef = useRef(null); // easter egg audio ref for Ryan (Opposite of Adults rmx)
+      // Breakdown toggles per manager
+      const [openBreakdowns, setOpenBreakdowns] = useState(new Set());
       // Public auto-persist controls
       const [autoPersist, setAutoPersist] = useState(localStorage.getItem('autoPersistEnabled') === 'true');
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
@@ -628,6 +630,51 @@
         return null;
       };
 
+      // Helper: find the schedule matchup string for a team in a given week
+      const findMatchupForTeam = (weekNumber, teamName) => {
+        const wk = Number(weekNumber);
+        if (!wk || !teamName) return null;
+        const w = preseasonSchedule.find(x => Number(x.week) === wk);
+        if (!w || !Array.isArray(w.games)) return null;
+        for (const g of w.games) {
+          const [away, home] = (g.matchup || '').split(' at ');
+          if (away === teamName || home === teamName) return g.matchup;
+        }
+        return null;
+      };
+
+      // Helper: read stored game result (including optional note) from gameResults by week/matchup
+      const getStoredGame = (weekNumber, matchup) => {
+        const wk = Number(weekNumber);
+        if (!wk || !matchup) return null;
+        const key = `week${wk}`;
+        const arr = gameResults && gameResults[key];
+        if (!Array.isArray(arr)) return null;
+        return arr.find(g => g && g.matchup === matchup) || null;
+      };
+
+      // Helper: determine if a pick is locked based on live state or scheduled kickoff (ET)
+      const isPickLocked = (weekNumber, teamName) => {
+        if (!weekNumber || !teamName) return false;
+        const outcome = getTeamOutcomeForWeek(teamName, weekNumber);
+        if (outcome) {
+          return outcome.state && outcome.state !== 'pre';
+        }
+        // Fallback to schedule kickoff if no live event found
+        const w = preseasonSchedule.find(x => Number(x.week) === Number(weekNumber));
+        if (!w) return false;
+        const g = w.games.find(gg => {
+          const [away, home] = (gg.matchup || '').split(' at ');
+          return away === teamName || home === teamName;
+        });
+        if (!g) return false;
+        // Assume ET in August (DST -04:00). Times provided without am/pm are typical PM kickoff; treat as local ET clock time.
+        // Construct an ET-like timestamp explicitly.
+        const timeStr = (g.time || '00:00').padStart(5, '0');
+        const dt = new Date(`${g.date}T${timeStr}:00-04:00`);
+        return Date.now() >= dt.getTime();
+      };
+
       /**
        * Calculate elimination week and draft order
        */
@@ -917,6 +964,13 @@
         setOpenWeeks(prev => {
           const next = new Set(prev);
           if (next.has(weekNum)) next.delete(weekNum); else next.add(weekNum);
+          return next;
+        });
+      };
+      const toggleBreakdown = (name) => {
+        setOpenBreakdowns(prev => {
+          const next = new Set(prev);
+          if (next.has(name)) next.delete(name); else next.add(name);
           return next;
         });
       };
@@ -1451,11 +1505,21 @@
                             else if (outcome && outcome.state === 'post' && outcome.isTie) resText = 'Tie';
                             const liveSuffix = (!pick.result && liveResult) ? ' (Live)' : '';
                             const manualSuffix = pick.manualResult ? ' (Manual override)' : '';
-                            return `Week ${pick.week} - ${(pick.team || 'TBD')} - ${resText}${liveSuffix}${manualSuffix}`;
+                            // Append stored note if available
+                            let noteSuffix = '';
+                            const matchup = pick.team ? findMatchupForTeam(pick.week, pick.team) : null;
+                            const stored = matchup ? getStoredGame(pick.week, matchup) : null;
+                            if (stored && stored.note) noteSuffix = ` • ${stored.note}`;
+                            return `Week ${pick.week} - ${(pick.team || 'TBD')} - ${resText}${liveSuffix}${manualSuffix}${noteSuffix}`;
                           })()}
                         >
                           <span className="font-semibold">W{pick.week}</span>
                           <span className="inline max-w-[10rem] truncate sm:max-w-none" title={pick.team || 'TBD'}>{pick.team || 'TBD'}</span>
+                          {(function(){
+                            const locked = pick.team ? isPickLocked(pick.week, pick.team) : false;
+                            if (!locked) return null;
+                            return <span className="ml-0.5" title="Pick locked (game started)">🔒</span>;
+                          })()}
                           {(function(){
                             const outcome = pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null;
                             const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
@@ -1498,6 +1562,77 @@
                           })()}
                         </div>
                       ))}
+                    </div>
+                    {/* Collapsible per-week margins table */}
+                    <div className="mt-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleBreakdown(mgr.name); }}
+                        className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs flex items-center gap-1"
+                        aria-expanded={openBreakdowns.has(mgr.name)}
+                        aria-controls={`br-${mgrIdx}`}
+                        title="Toggle margin breakdown"
+                      >
+                        <i className={`fas ${openBreakdowns.has(mgr.name) ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                        Margins breakdown
+                      </button>
+                      {openBreakdowns.has(mgr.name) && (
+                        <div id={`br-${mgrIdx}`} className="mt-2 overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-purple-800/30">
+                              <tr>
+                                <th className="p-1 text-left">Week</th>
+                                <th className="p-1 text-left">Team</th>
+                                <th className="p-1 text-left">Result</th>
+                                <th className="p-1 text-left">Margin</th>
+                                <th className="p-1 text-left">Running Total</th>
+                                <th className="p-1 text-left">Note</th>
+                                <th className="p-1 text-left">Lock</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(function(){
+                                let runningTotal = 0;
+                                return [...mgr.picks].sort((a,b)=>Number(a.week)-Number(b.week)).map((p, i) => {
+                                  const wk = Number(p.week);
+                                  if (!wk || !p.team) return null;
+                                  if (isEliminated && wk > Number(eliminationWeekComputed)) return null;
+                                  const out = getTeamOutcomeForWeek(p.team, wk);
+                                  let diff = 0, res = '—', isLoss = false, isWin = false, isTie = false;
+                                  if (out && out.state === 'post') {
+                                    diff = (out.score - out.oppScore) || 0;
+                                    isTie = !!out.isTie;
+                                    isWin = out.isWinner && !isTie;
+                                    isLoss = !out.isWinner && !isTie;
+                                  } else {
+                                    if (typeof p.margin === 'number') diff = p.margin;
+                                    isWin = p.result === 'W';
+                                    isLoss = p.result === 'L';
+                                    isTie = p.result === 'T';
+                                  }
+                                  if (isWin) res = 'W'; else if (isLoss) res = 'L'; else if (isTie) res = 'T'; else res = '—';
+                                  // Only add to running total for decided games (W/L). Tie contributes 0.
+                                  if (res === 'W' || res === 'L') runningTotal += diff || 0;
+                                  const matchup = findMatchupForTeam(wk, p.team);
+                                  const stored = matchup ? getStoredGame(wk, matchup) : null;
+                                  const note = stored && stored.note ? stored.note : (isTie ? 'Tie' : '');
+                                  const locked = isPickLocked(wk, p.team);
+                                  return (
+                                    <tr key={`row-${wk}-${i}`} className={i % 2 === 0 ? 'bg-purple-700/20' : 'bg-purple-700/10'}>
+                                      <td className="p-1">W{wk}</td>
+                                      <td className="p-1">{p.team}</td>
+                                      <td className="p-1">{res}</td>
+                                      <td className="p-1">{(res === 'W' || res === 'L' || res === 'T') ? diff : '—'}</td>
+                                      <td className="p-1">{runningTotal}</td>
+                                      <td className="p-1">{note || ''}</td>
+                                      <td className="p-1">{locked ? '🔒' : ''}</td>
+                                    </tr>
+                                  );
+                                });
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </div>
                   
@@ -1599,17 +1734,30 @@
                           displayTime = `Final`;
                         }
                       }
+                      // Determine lock and note status
+                      const outA = getTeamOutcomeForWeek(awayTeam, week.week);
+                      const outB = getTeamOutcomeForWeek(homeTeam, week.week);
+                      const locked = (outA && outA.state !== 'pre') || (outB && outB.state !== 'pre');
+                      let noteText = '';
+                      if (storedGame && storedGame.note) noteText = storedGame.note;
+                      else if ((storedGame && storedGame.awayScore === storedGame.homeScore) || (score && score.state === 'post' && score.awayScore === score.homeScore)) noteText = 'Tie';
                       
                       return (
                         <tr key={`${week.week}-${idx}`} className={idx % 2 === 0 ? 'bg-purple-700/30' : 'bg-purple-700/20'}>
                           <td className="p-2 text-center">{week.week}</td>
                           <td className="p-2 text-center">{game.date}</td>
-                          <td className="p-2 text-center">{displayTime}</td>
+                          <td className="p-2 text-center">
+                            <span>{displayTime}</span>
+                            {locked && <span className="ml-1" title="Kickoff passed (locked)">🔒</span>}
+                          </td>
                           <td className="p-2">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{awayTeam}</span>
                               <span className="text-gray-400">@</span>
                               <span className="font-medium">{homeTeam}</span>
+                              {noteText && (
+                                <i className="fas fa-circle-info text-amber-300 ml-1" title={noteText}></i>
+                              )}
                             </div>
                           </td>
                           <td className="p-2">
@@ -1634,6 +1782,10 @@
                                       title={`${manager.name} - ${manager.teamLabel}`}
                                     >
                                       {manager.name}
+                                      {(function(){
+                                        const l = pick && pick.team ? isPickLocked(week.week, pick.team) : false;
+                                        return l ? <span className="ml-1" title="Pick locked">🔒</span> : null;
+                                      })()}
                                     </span>
                                   );
                                 })}
@@ -1699,15 +1851,28 @@
                               displayTime = `Final`;
                             }
                           }
+                          // Determine lock and note
+                          const outA = getTeamOutcomeForWeek(awayTeam, week.week);
+                          const outB = getTeamOutcomeForWeek(homeTeam, week.week);
+                          const locked = (outA && outA.state !== 'pre') || (outB && outB.state !== 'pre');
+                          let noteText = '';
+                          if (storedGame && storedGame.note) noteText = storedGame.note;
+                          else if ((storedGame && storedGame.awayScore === storedGame.homeScore) || (score && score.state === 'post' && score.awayScore === score.homeScore)) noteText = 'Tie';
                           
                           return (
                             <div key={`${week.week}-m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
                               <div className="flex items-center justify-between text-sm">
-                                <div className="font-semibold">{displayTime}</div>
+                                <div className="font-semibold">
+                                  <span>{displayTime}</span>
+                                  {locked && <span className="ml-1" title="Kickoff passed (locked)">🔒</span>}
+                                </div>
                                 <div className="text-xs text-purple-200">{game.date}</div>
                               </div>
                               <div className="mt-1 font-medium">
                                 {awayTeam} <span className="text-gray-400">@</span> {homeTeam}
+                                {noteText && (
+                                  <i className="fas fa-circle-info text-amber-300 ml-1" title={noteText}></i>
+                                )}
                               </div>
                               {managersWithPick.length > 0 ? (
                                 <div className="mt-2 flex flex-wrap gap-1">
@@ -1724,7 +1889,13 @@
                                     }
                                     
                                     return (
-                                      <span key={mgrIdx} className={`px-2 py-0.5 rounded-full text-[11px] ${cls}`}>{manager.name}</span>
+                                      <span key={mgrIdx} className={`px-2 py-0.5 rounded-full text-[11px] ${cls}`}>
+                                        {manager.name}
+                                        {(function(){
+                                          const l = pick && pick.team ? isPickLocked(week.week, pick.team) : false;
+                                          return l ? <span className="ml-1" title="Pick locked">🔒</span> : null;
+                                        })()}
+                                      </span>
                                     );
                                   })}
                                 </div>
