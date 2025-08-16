@@ -664,45 +664,38 @@
         let totalMargin = 0;
         const derived = deriveElimination(mgr);
         
-        // For eliminated managers with no wins, show their elimination loss margin
+        // For eliminated managers, include wins up to elimination week
+        // AND include the elimination-week loss margin (negative).
         if (derived.isEliminated) {
-          let hasWins = false;
+          const elimWeekNum = Number(derived.week);
           for (const pick of mgr.picks) {
             const wk = Number(pick.week);
             if (!wk || !pick.team) continue;
-            if (wk > Number(derived.week)) continue;
-            
+            if (wk > elimWeekNum) continue;
+
             const outcome = getTeamOutcomeForWeek(pick.team, wk);
-            let isWin = false;
             let margin = 0;
-            
+            let isWin = false;
+            let isLoss = false;
+
             if (outcome && outcome.state === 'post') {
+              const diff = (outcome.score - outcome.oppScore) || 0; // perspective = picked team
               isWin = outcome.isWinner && !outcome.isTie;
-              margin = isWin ? ((outcome.score - outcome.oppScore) || 0) : 0;
+              isLoss = !outcome.isWinner && !outcome.isTie;
+              margin = diff;
             } else {
+              if (typeof pick.margin === 'number') margin = pick.margin;
               isWin = pick.result === 'W';
-              margin = (isWin && typeof pick.margin === 'number') ? pick.margin : 0;
+              isLoss = pick.result === 'L';
             }
-            
+
             if (isWin) {
-              hasWins = true;
-              totalMargin += margin;
+              totalMargin += Math.max(0, margin);
+            } else if (isLoss && wk === elimWeekNum) {
+              // Add the negative loss margin from the elimination week
+              totalMargin += Math.min(0, margin);
             }
           }
-          
-          // If no wins, show the elimination loss margin
-          if (!hasWins && totalMargin === 0) {
-            const eliminationPick = (mgr.picks || []).find(p => Number(p.week) === Number(derived.week));
-            if (eliminationPick && eliminationPick.team) {
-              const outcome = getTeamOutcomeForWeek(eliminationPick.team, eliminationPick.week);
-              if (outcome && outcome.state === 'post' && !outcome.isWinner && !outcome.isTie) {
-                return (outcome.score - outcome.oppScore) || 0; // Negative margin for loss
-              } else if (eliminationPick.result === 'L' && typeof eliminationPick.margin === 'number') {
-                return eliminationPick.margin; // Should be negative
-              }
-            }
-          }
-          
           return totalMargin;
         }
         
