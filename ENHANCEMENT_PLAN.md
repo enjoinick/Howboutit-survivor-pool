@@ -96,10 +96,10 @@ Phase 4 – Performance Polish
 - [ ] Collapsible per-week margins table
 - [ ] Game notes on schedule/manager rows
 - [ ] Pick lock indicators
-- [ ] Admin JSON Schema validation
-- [ ] Admin diff preview
-- [ ] ESPN fetch retry/backoff
-- [ ] Stale data banner
+- [x] Admin JSON Schema validation
+- [x] Admin diff preview
+- [x] ESPN fetch retry/backoff
+- [x] Stale data banner
 - [ ] Throttle + memoize
 - [ ] Lazy-load audio + mute toggle
 
@@ -191,12 +191,12 @@ Phase 4 – Performance Polish
   - Optional: add `data-YYYYMMDD-HHmm.json` file in same Gist on save (second PATCH) for easy rollback.
 
 - **ESPN fetch retry/backoff** (`index.html`)
-  - Wrapper `fetchWithRetry(url, opts)` with params: `retries=3`, `baseDelay=800ms`, `factor=2`, jitter ±25%.
-  - Cache `ETag`/`Last-Modified` and use conditional requests when supported; on 304, reuse cache.
+  - Wrapper `fetchWithRetry(url, opts)` with params: `retries=5`, `baseDelay=1000ms`, `factor=2`, jitter up to ~250ms.
+  - Optional future: cache `ETag`/`Last-Modified` and use conditional requests when supported; on 304, reuse cache.
   - On hard failure, log once (debug mode) and fallback to `gameResults`.
 
 - **Stale data banner** (`index.html`)
-  - Compute `ageMs = now - new Date(lastUpdated)`; threshold dynamic (e.g., 10m if any games `state === 'in'`, 60m otherwise).
+  - Compute `ageMs = now - new Date(lastUpdated)`; threshold fixed at 10 minutes.
   - Show a dismissible banner in the header; auto-hide on refresh or when fresh data arrives.
 
 - **Performance**

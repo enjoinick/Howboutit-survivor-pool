@@ -233,6 +233,36 @@
       const saveDebounceRef = useRef(null);
       const lastSavedHashRef = useRef('');
 
+      // --- Data staleness helpers ---
+      const STALE_MINUTES = 10; // consider data stale after 10 minutes without a successful refresh
+      const ageMinutes = useMemo(() => {
+        if (!lastUpdated) return null;
+        const t = Date.parse(lastUpdated);
+        if (Number.isNaN(t)) return null;
+        const diffMs = Date.now() - t;
+        if (diffMs < 0) return 0;
+        return Math.floor(diffMs / 60000);
+      }, [lastUpdated]);
+      const isStale = useMemo(() => ageMinutes === null || ageMinutes > STALE_MINUTES, [ageMinutes]);
+
+      // --- Fetch with retry & exponential backoff (with jitter) ---
+      async function fetchWithRetry(url, options = {}, attempts = 5, baseDelay = 1000, factor = 2) {
+        let error;
+        for (let i = 0; i < attempts; i++) {
+          try {
+            const res = await fetch(url, options);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res;
+          } catch (err) {
+            error = err;
+            const jitter = Math.random() * 250;
+            const delay = baseDelay * Math.pow(factor, i) + jitter;
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+        throw error || new Error('Fetch failed');
+      }
+
       // --- Easter Egg: Live Joke Ticker (continuous stream) ---
       const tickerWrapRef = useRef(null);
       const tickerTextRef = useRef(null); // first copy of stream for measurement
@@ -432,11 +462,11 @@
         let cancelled = false;
         async function fetchScores() {
           try {
-            const res = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
+            const res = await fetchWithRetry('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', {}, 5, 1000, 2);
             const data = await res.json();
             if (!cancelled) {
               setGames(data.events || []);
-              // Update the visible last updated time to reflect the latest scoreboard fetch
+              // Only bump lastUpdated on successful scoreboard fetch
               setLastUpdated(new Date().toISOString());
               
               // Calculate margins and results for managers' picks
@@ -445,7 +475,8 @@
               }
             }
           } catch (err) {
-            console.error('Error fetching scores:', err);
+            console.error('Error fetching scores (after retries):', err);
+            // Do not update lastUpdated here; allows stale indicator to surface
           }
         }
         
@@ -1160,8 +1191,11 @@
             style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top))' }}
           >
             <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-purple-200 whitespace-nowrap">
-                Last updated: {new Date(lastUpdated).toLocaleString()}
+              <div className="text-xs text-purple-200 whitespace-nowrap flex items-center gap-2">
+                <span>Last updated: {lastUpdated ? new Date(lastUpdated).toLocaleString() : '—'}</span>
+                {isStale && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-400 text-black font-bold text-[10px]" title="Live data may be out of date">STALE</span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <label className="hidden sm:flex items-center gap-2 text-xs select-none" title="Automatically save live results to your configured Gist">
@@ -1187,6 +1221,24 @@
               </div>
             </div>
           </div>
+
+          {/* Stale data banner */}
+          {isStale && (
+            <div className="mt-2 glass rounded-lg px-3 py-2 -mx-1 md:mx-0 border border-amber-400/40 text-amber-200 flex items-center gap-2 animate-fade-in" role="status" aria-live="polite">
+              <i className="fas fa-triangle-exclamation text-amber-300" aria-hidden="true"></i>
+              <span>
+                Live data is stale{typeof ageMinutes === 'number' ? ` (${ageMinutes} min${ageMinutes === 1 ? '' : 's'} old)` : ''}. You can try refreshing.
+              </span>
+              <button
+                onClick={loadData}
+                disabled={refreshing || loading}
+                className={`ml-auto inline-flex items-center justify-center px-2.5 py-1.5 rounded ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} text-white text-xs transition-colors`}
+              >
+                <i className={`fas fa-sync-alt mr-1 ${refreshing ? 'animate-rotate' : ''}`}></i>
+                Refresh
+              </button>
+            </div>
+          )}
 
           {/* Header */}
           <header className="text-center py-6 animate-fade-in">
