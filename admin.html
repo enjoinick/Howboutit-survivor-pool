@@ -13,6 +13,10 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Ajv for JSON Schema validation -->
+  <script src="https://cdn.jsdelivr.net/npm/ajv@8/dist/ajv.min.js"></script>
+  <!-- diff for computing text diffs (line-by-line) -->
+  <script src="https://cdn.jsdelivr.net/npm/diff@5/dist/diff.min.js"></script>
   <style>
     body {
       background-image: linear-gradient(to top right, #3730a3, #6d28d9);
@@ -119,6 +123,11 @@
       const [gistToken, setGistToken] = useState((localStorage.getItem('gistToken') || '').trim());
       const [isSaving, setIsSaving] = useState(false);
       const [dirty, setDirty] = useState(false);
+      // Save preview & validation state
+      const [baselineJson, setBaselineJson] = useState('');
+      const [showSavePreview, setShowSavePreview] = useState(false);
+      const [diffLines, setDiffLines] = useState([]);
+      const [validationErrors, setValidationErrors] = useState([]);
       // File input ref for importing JSON
       const fileInputRef = useRef(null);
       
@@ -148,6 +157,103 @@
             .catch(() => {});
         }
       }, [gistId]);
+
+      // Lightweight JSON Schema for admin validation (kept permissive to avoid blocking legitimate data)
+      const jsonSchema = {
+        type: 'object',
+        required: ['managers'],
+        additionalProperties: true,
+        properties: {
+          managers: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['name', 'teamLabel', 'lastYearRank', 'picks', 'eliminated'],
+              additionalProperties: true,
+              properties: {
+                name: { type: 'string' },
+                teamLabel: { type: 'string' },
+                lastYearRank: { type: 'integer' },
+                eliminated: { type: 'boolean' },
+                buyback: { type: 'boolean' },
+                carryMargin: { type: ['number', 'integer'] },
+                picks: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    required: ['week'],
+                    additionalProperties: true,
+                    properties: {
+                      week: { type: 'integer' },
+                      team: { type: 'string' },
+                      result: { type: ['string', 'null'], enum: ['W', 'L', null] },
+                      margin: { type: ['number', 'integer'] },
+                      manualResult: { type: 'boolean' },
+                      lastUpdated: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          gameResults: { type: 'object', additionalProperties: true },
+          lastUpdated: { type: 'string' }
+        }
+      };
+
+      const getDataToSave = () => ({
+        ...completeData,
+        managers: managers,
+        lastUpdated: new Date().toISOString()
+      });
+
+      const validateAgainstSchema = (data) => {
+        if (!window.Ajv) {
+          console.warn('Ajv not loaded; skipping validation');
+          return { valid: true, errors: [] };
+        }
+        try {
+          const ajv = new Ajv({ allErrors: true, strict: false });
+          const validate = ajv.compile(jsonSchema);
+          const valid = validate(data);
+          return { valid: !!valid, errors: validate.errors || [] };
+        } catch (e) {
+          console.error('Validation setup failed:', e);
+          return { valid: true, errors: [] };
+        }
+      };
+
+      const startSaveFlow = async () => {
+        // Validate and prepare diff preview before confirming save
+        const dataToSave = getDataToSave();
+        const validation = validateAgainstSchema(dataToSave);
+        if (!validation.valid) {
+          setValidationErrors((validation.errors || []).map(err => `${err.instancePath || 'data'} ${err.message}`));
+        } else {
+          setValidationErrors([]);
+        }
+        const before = baselineJson || '';
+        const after = JSON.stringify(dataToSave, null, 2);
+        let computed = [];
+        try {
+          if (window.Diff && Diff.diffLines) {
+            computed = Diff.diffLines(before, after);
+          } else {
+            computed = [
+              { added: false, removed: false, value: '(Diff library not loaded)\n' },
+              { added: true, removed: false, value: after }
+            ];
+          }
+        } catch (e) {
+          console.error('Diff computation failed:', e);
+          computed = [
+            { added: false, removed: false, value: '(Diff failed; showing new JSON)\n' },
+            { added: true, removed: false, value: after }
+          ];
+        }
+        setDiffLines(computed);
+        setShowSavePreview(true);
+      };
       
       const handleLogin = () => {
         const storedPassword = localStorage.getItem('adminPassword') || 'survivor2025';
@@ -199,6 +305,7 @@
             setManagers(data.managers || []);
             setCompleteData(data);
             setJsonData(JSON.stringify(data, null, 2));
+            setBaselineJson(JSON.stringify(data, null, 2));
             setDirty(false);
             return;
           } catch (err) {
@@ -211,6 +318,7 @@
           setManagers(data.managers || []);
           setCompleteData(data);
           setJsonData(JSON.stringify(data, null, 2));
+          setBaselineJson(JSON.stringify(data, null, 2));
           setDirty(false);
         } catch (error) {
           console.error('Error loading local data.json:', error);
@@ -336,9 +444,15 @@
           if (!data || typeof data !== 'object' || !Array.isArray(data.managers)) {
             throw new Error('Invalid JSON format: expected { managers: [...] }');
           }
-          setManagers(data.managers);
+          // Preserve entire structure (e.g., gameResults) and reflect it in state
+          const importedManagers = Array.isArray(data.managers) ? data.managers : [];
+          setManagers(importedManagers);
+          setCompleteData({
+            ...data,
+            managers: importedManagers
+          });
           setJsonData(JSON.stringify({
-            managers: data.managers,
+            ...data,
             lastUpdated: new Date().toISOString()
           }, null, 2));
           setDirty(true);
@@ -349,8 +463,8 @@
         }
       };
 
-      // Save current complete data to configured Gist
-      const saveToGist = async () => {
+      // Save current complete data to configured Gist (internal; called after preview confirm)
+      const performSaveToGist = async () => {
         // Fallback to localStorage and trim before validation
         const id = (gistId || localStorage.getItem('gistId') || '').trim();
         const token = (gistToken || localStorage.getItem('gistToken') || '').trim();
@@ -365,11 +479,7 @@
           console.log('Saving to Gist...', { id: id.slice(0,4) + '...' + id.slice(-4), tokenLength: token.length });
           
           // Ensure we save the complete data structure including gameResults
-          const dataToSave = {
-            ...completeData,
-            managers: managers,
-            lastUpdated: new Date().toISOString()
-          };
+          const dataToSave = getDataToSave();
           
           const payload = {
             files: {
@@ -389,6 +499,7 @@
             throw new Error(`Gist save failed: ${res.status} ${t}`);
           }
           setDirty(false);
+          setBaselineJson(JSON.stringify(dataToSave, null, 2));
           showNotification('Saved to Gist successfully', 'success');
         } catch (err) {
           console.error(err);
@@ -577,7 +688,7 @@
                     Import JSON
                   </button>
                   <button
-                    onClick={saveToGist}
+                    onClick={startSaveFlow}
                     disabled={!dirty || isSaving}
                     className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${(!dirty || isSaving) ? 'bg-green-800 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700'}`}
                     title="Save current changes to Gist"
@@ -871,6 +982,56 @@
                 <div className="flex justify-end gap-3 mt-6">
                   <button onClick={() => setShowSettings(false)} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors">Cancel</button>
                   <button onClick={saveSettings} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors">Save Settings</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Save Preview & Validation Modal */}
+          {showSavePreview && (
+            <div className="modal" role="dialog" aria-modal="true" aria-label="Save Preview">
+              <div className="glass rounded-2xl p-6 max-w-4xl w-full">
+                <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                  <i className="fas fa-magnifying-glass"></i>
+                  Review Changes
+                </h2>
+                {validationErrors.length > 0 && (
+                  <div className="mb-4 p-3 rounded bg-red-600/30 border border-red-400/50">
+                    <div className="font-semibold mb-2">Schema validation failed:</div>
+                    <ul className="list-disc pl-5 text-sm">
+                      {validationErrors.map((e, idx) => (
+                        <li key={idx} className="text-red-200">{e}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="mb-4 text-sm text-purple-200">Only changed lines are highlighted.</div>
+                <div className="bg-black/40 rounded p-3 max-h-[50vh] overflow-auto text-sm font-mono whitespace-pre-wrap">
+                  {diffLines.map((part, idx) => (
+                    <div key={idx} className={part.added ? 'text-green-300' : part.removed ? 'text-red-300' : 'text-gray-200'}>
+                      {part.value}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setShowSavePreview(false)}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (validationErrors.length === 0) {
+                        await performSaveToGist();
+                        setShowSavePreview(false);
+                      }
+                    }}
+                    disabled={validationErrors.length > 0 || isSaving}
+                    className={`px-4 py-2 rounded-lg transition-colors ${validationErrors.length > 0 || isSaving ? 'bg-green-800 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700'}`}
+                  >
+                    {isSaving ? 'Saving…' : 'Confirm & Save'}
+                  </button>
                 </div>
               </div>
             </div>
