@@ -227,11 +227,97 @@
       const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan (GRAVEDIGGER)
       const westonAudioRef = useRef(null); // easter egg audio ref for Weston (DUUUVALL)
       const ryanAudioRef = useRef(null); // easter egg audio ref for Ryan (Opposite of Adults rmx)
+      // Global audio mute toggle (persisted)
+      const [muted, setMuted] = useState(localStorage.getItem('mutedAudio') === 'true');
+      // Breakdown toggles per manager
+      const [openBreakdowns, setOpenBreakdowns] = useState(new Set());
       // Public auto-persist controls
       const [autoPersist, setAutoPersist] = useState(localStorage.getItem('autoPersistEnabled') === 'true');
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
       const saveDebounceRef = useRef(null);
       const lastSavedHashRef = useRef('');
+
+      // Manual refresh throttling
+      const REFRESH_THROTTLE_MS = 15000; // 15s between manual refreshes
+      const lastManualRefreshRef = useRef(0);
+      const [cooldownMs, setCooldownMs] = useState(0);
+      const cooldownTimerRef = useRef(null);
+
+      const handleManualRefresh = () => {
+        const now = Date.now();
+        const remaining = lastManualRefreshRef.current + REFRESH_THROTTLE_MS - now;
+        if (remaining > 0) {
+          setCooldownMs(remaining);
+          if (!cooldownTimerRef.current) {
+            cooldownTimerRef.current = setInterval(() => {
+              setCooldownMs((ms) => {
+                const next = Math.max(0, ms - 1000);
+                if (next === 0 && cooldownTimerRef.current) {
+                  clearInterval(cooldownTimerRef.current);
+                  cooldownTimerRef.current = null;
+                }
+                return next;
+              });
+            }, 1000);
+          }
+          return;
+        }
+        lastManualRefreshRef.current = now;
+        setCooldownMs(REFRESH_THROTTLE_MS);
+        if (!cooldownTimerRef.current) {
+          cooldownTimerRef.current = setInterval(() => {
+            setCooldownMs((ms) => {
+              const next = Math.max(0, ms - 1000);
+              if (next === 0 && cooldownTimerRef.current) {
+                clearInterval(cooldownTimerRef.current);
+                cooldownTimerRef.current = null;
+              }
+              return next;
+            });
+          }, 1000);
+        }
+        loadData();
+      };
+
+      // --- Data staleness helpers ---
+      const STALE_MINUTES = 10; // consider data stale after 10 minutes without a successful refresh
+      const ageMinutes = useMemo(() => {
+        if (!lastUpdated) return null;
+        const t = Date.parse(lastUpdated);
+        if (Number.isNaN(t)) return null;
+        const diffMs = Date.now() - t;
+        if (diffMs < 0) return 0;
+        return Math.floor(diffMs / 60000);
+      }, [lastUpdated]);
+
+      // Cleanup: clear refresh cooldown timer on unmount
+      useEffect(() => {
+        return () => {
+          if (cooldownTimerRef.current) {
+            clearInterval(cooldownTimerRef.current);
+            cooldownTimerRef.current = null;
+          }
+        };
+      }, []);
+      const isStale = useMemo(() => ageMinutes === null || ageMinutes > STALE_MINUTES, [ageMinutes]);
+
+      // --- Fetch with retry & exponential backoff (with jitter) ---
+      async function fetchWithRetry(url, options = {}, attempts = 5, baseDelay = 1000, factor = 2) {
+        let error;
+        for (let i = 0; i < attempts; i++) {
+          try {
+            const res = await fetch(url, options);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res;
+          } catch (err) {
+            error = err;
+            const jitter = Math.random() * 250;
+            const delay = baseDelay * Math.pow(factor, i) + jitter;
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+        throw error || new Error('Fetch failed');
+      }
 
       // --- Easter Egg: Live Joke Ticker (continuous stream) ---
       const tickerWrapRef = useRef(null);
@@ -427,16 +513,28 @@
         localStorage.setItem('autoPersistEnabled', autoPersist ? 'true' : 'false');
       }, [autoPersist]);
 
+      // Persist mute preference locally
+      useEffect(() => {
+        localStorage.setItem('mutedAudio', muted ? 'true' : 'false');
+      }, [muted]);
+
+      // When muting, pause any currently playing easter egg audio
+      useEffect(() => {
+        if (muted) {
+          try { pauseAllEggs(); } catch (e) {}
+        }
+      }, [muted]);
+
       // Fetch scores periodically from ESPN and calculate margins
       useEffect(() => {
         let cancelled = false;
         async function fetchScores() {
           try {
-            const res = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard');
+            const res = await fetchWithRetry('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', {}, 5, 1000, 2);
             const data = await res.json();
             if (!cancelled) {
               setGames(data.events || []);
-              // Update the visible last updated time to reflect the latest scoreboard fetch
+              // Only bump lastUpdated on successful scoreboard fetch
               setLastUpdated(new Date().toISOString());
               
               // Calculate margins and results for managers' picks
@@ -445,7 +543,8 @@
               }
             }
           } catch (err) {
-            console.error('Error fetching scores:', err);
+            console.error('Error fetching scores (after retries):', err);
+            // Do not update lastUpdated here; allows stale indicator to surface
           }
         }
         
@@ -597,6 +696,51 @@
         return null;
       };
 
+      // Helper: find the schedule matchup string for a team in a given week
+      const findMatchupForTeam = (weekNumber, teamName) => {
+        const wk = Number(weekNumber);
+        if (!wk || !teamName) return null;
+        const w = preseasonSchedule.find(x => Number(x.week) === wk);
+        if (!w || !Array.isArray(w.games)) return null;
+        for (const g of w.games) {
+          const [away, home] = (g.matchup || '').split(' at ');
+          if (away === teamName || home === teamName) return g.matchup;
+        }
+        return null;
+      };
+
+      // Helper: read stored game result (including optional note) from gameResults by week/matchup
+      const getStoredGame = (weekNumber, matchup) => {
+        const wk = Number(weekNumber);
+        if (!wk || !matchup) return null;
+        const key = `week${wk}`;
+        const arr = gameResults && gameResults[key];
+        if (!Array.isArray(arr)) return null;
+        return arr.find(g => g && g.matchup === matchup) || null;
+      };
+
+      // Helper: determine if a pick is locked based on live state or scheduled kickoff (ET)
+      const isPickLocked = (weekNumber, teamName) => {
+        if (!weekNumber || !teamName) return false;
+        const outcome = getTeamOutcomeForWeek(teamName, weekNumber);
+        if (outcome) {
+          return outcome.state && outcome.state !== 'pre';
+        }
+        // Fallback to schedule kickoff if no live event found
+        const w = preseasonSchedule.find(x => Number(x.week) === Number(weekNumber));
+        if (!w) return false;
+        const g = w.games.find(gg => {
+          const [away, home] = (gg.matchup || '').split(' at ');
+          return away === teamName || home === teamName;
+        });
+        if (!g) return false;
+        // Assume ET in August (DST -04:00). Times provided without am/pm are typical PM kickoff; treat as local ET clock time.
+        // Construct an ET-like timestamp explicitly.
+        const timeStr = (g.time || '00:00').padStart(5, '0');
+        const dt = new Date(`${g.date}T${timeStr}:00-04:00`);
+        return Date.now() >= dt.getTime();
+      };
+
       /**
        * Calculate elimination week and draft order
        */
@@ -726,6 +870,51 @@
         return totalMargin;
       };
 
+      // Build a concise week-by-week margin breakdown matching getCumulativeMargin rules
+      const getMarginBreakdown = (mgr) => {
+        if (!mgr || !Array.isArray(mgr.picks)) return 'No data';
+        const derived = deriveElimination(mgr);
+        const elimWeekNum = derived.isEliminated ? Number(derived.week) : null;
+        const picksSorted = mgr.picks.slice().sort((a,b) => (Number(a.week||0) - Number(b.week||0)));
+        let total = 0;
+        const lines = [];
+        for (const pick of picksSorted) {
+          const wk = Number(pick.week);
+          if (!wk || !pick.team) continue;
+          if (elimWeekNum && wk > elimWeekNum) continue;
+          const outcome = getTeamOutcomeForWeek(pick.team, wk);
+          let isTie = false, isWin = false, isLoss = false, diff = 0;
+          if (outcome && outcome.state === 'post') {
+            diff = (outcome.score - outcome.oppScore) || 0;
+            isTie = !!outcome.isTie;
+            isWin = outcome.isWinner && !isTie;
+            isLoss = !outcome.isWinner && !isTie;
+          } else {
+            if (typeof pick.margin === 'number') diff = pick.margin;
+            isWin = pick.result === 'W';
+            isLoss = pick.result === 'L';
+            isTie = pick.result === 'T';
+          }
+          if (derived.isEliminated) {
+            if (isWin) {
+              total += Math.max(0, diff);
+              lines.push(`W${wk} ${pick.team}: +${Math.max(0, diff)}`);
+            } else if (isLoss && wk === elimWeekNum) {
+              total += Math.min(0, diff);
+              lines.push(`W${wk} ${pick.team}: ${Math.min(0, diff)}`);
+            }
+          } else {
+            if (isWin) {
+              total += Math.max(0, diff);
+              lines.push(`W${wk} ${pick.team}: +${Math.max(0, diff)}`);
+            }
+          }
+        }
+        if (lines.length === 0) return 'No completed margins yet';
+        lines.push(`Total: ${total}`);
+        return lines.join('\n');
+      };
+
       // Draft order per provided rules (live-reactive)
       const computeDraftOrderLive = (mgrs) => {
         const totalWeeks = preseasonSchedule.length || 0;
@@ -844,6 +1033,13 @@
           return next;
         });
       };
+      const toggleBreakdown = (name) => {
+        setOpenBreakdowns(prev => {
+          const next = new Set(prev);
+          if (next.has(name)) next.delete(name); else next.add(name);
+          return next;
+        });
+      };
       // Pause all easter egg audios before playing another
       const pauseAllEggs = () => {
         [joshAudioRef, jordanAudioRef, westonAudioRef, ryanAudioRef].forEach(ref => {
@@ -852,6 +1048,7 @@
       };
       const handleCardClick = (mgr) => {
         if (!mgr || !mgr.name) return;
+        if (muted) return; // Respect global mute
         // Ryan easter egg
         if (mgr.name.trim().toLowerCase() === 'ryan' && ryanAudioRef.current) {
           try {
@@ -1105,18 +1302,21 @@
       return (
         <div className="p-4 space-y-6 max-w-7xl mx-auto">
           {/* Easter egg audio (hidden) */}
-          <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={jordanAudioRef} src="Audio/GraveDigger.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={westonAudioRef} src="Audio/Duuuval.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={ryanAudioRef} src="Audio/Opposite of Adults rmx.mp3" preload="auto" style={{ display: 'none' }} />
+          <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="none" muted={muted} style={{ display: 'none' }} />
+          <audio ref={jordanAudioRef} src="Audio/GraveDigger.mp3" preload="none" muted={muted} style={{ display: 'none' }} />
+          <audio ref={westonAudioRef} src="Audio/Duuuval.mp3" preload="none" muted={muted} style={{ display: 'none' }} />
+          <audio ref={ryanAudioRef} src="Audio/Opposite of Adults rmx.mp3" preload="none" muted={muted} style={{ display: 'none' }} />
           {/* Sticky Toolbar */}
           <div
             className="sticky top-0 z-50 glass rounded-xl px-3 py-2 -mx-1 md:mx-0 backdrop-blur animate-fade-in"
             style={{ paddingTop: 'calc(0.5rem + env(safe-area-inset-top))' }}
           >
             <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-purple-200 whitespace-nowrap">
-                Last updated: {new Date(lastUpdated).toLocaleString()}
+              <div className="text-xs text-purple-200 whitespace-nowrap flex items-center gap-2">
+                <span>Last updated: {lastUpdated ? new Date(lastUpdated).toLocaleString() : '—'}</span>
+                {isStale && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-400 text-black font-bold text-[10px]" title="Live data may be out of date">STALE</span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <label className="hidden sm:flex items-center gap-2 text-xs select-none" title="Automatically save live results to your configured Gist">
@@ -1130,18 +1330,44 @@
                   Auto-save to Gist
                 </label>
                 <button
-                  onClick={loadData}
-                  disabled={refreshing || loading}
+                  onClick={() => setMuted(m => !m)}
+                  aria-label={muted ? 'Unmute audio' : 'Mute audio'}
+                  className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${muted ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+                  title={muted ? 'Audio muted' : 'Audio on'}
+                >
+                  <i className={`fas ${muted ? 'fa-volume-xmark' : 'fa-volume-high'}`}></i>
+                </button>
+                <button
+                  onClick={handleManualRefresh}
+                  disabled={refreshing || loading || cooldownMs > 0}
                   aria-label="Refresh data"
                   aria-busy={refreshing}
-                  className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
-                  title="Refresh data"
+                  className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${(refreshing || cooldownMs > 0) ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+                  title={`Refresh data${cooldownMs > 0 ? ` (wait ${Math.ceil(cooldownMs/1000)}s)` : ''}`}
                 >
                   <i className={`fas fa-sync-alt ${refreshing ? 'animate-rotate' : ''}`}></i>
                 </button>
               </div>
             </div>
           </div>
+
+          {/* Stale data banner */}
+          {isStale && (
+            <div className="mt-2 glass rounded-lg px-3 py-2 -mx-1 md:mx-0 border border-amber-400/40 text-amber-200 flex items-center gap-2 animate-fade-in" role="status" aria-live="polite">
+              <i className="fas fa-triangle-exclamation text-amber-300" aria-hidden="true"></i>
+              <span>
+                Live data is stale{typeof ageMinutes === 'number' ? ` (${ageMinutes} min${ageMinutes === 1 ? '' : 's'} old)` : ''}. You can try refreshing.
+              </span>
+              <button
+                onClick={handleManualRefresh}
+                disabled={refreshing || loading || cooldownMs > 0}
+                className={`ml-auto inline-flex items-center justify-center px-2.5 py-1.5 rounded ${(refreshing || cooldownMs > 0) ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} text-white text-xs transition-colors`}
+              >
+                <i className={`fas fa-sync-alt mr-1 ${refreshing ? 'animate-rotate' : ''}`}></i>
+                {cooldownMs > 0 ? `Wait ${Math.ceil(cooldownMs/1000)}s` : 'Refresh'}
+              </button>
+            </div>
+          )}
 
           {/* Header */}
           <header className="text-center py-6 animate-fade-in">
@@ -1194,11 +1420,11 @@
               <div className="text-sm">Managers</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-green-400">{managers.filter(m => !deriveElimination(m).isEliminated).length}</div>
+              <div className="text-3xl font-bold text-green-400">{orderedManagers.filter(m => m.eliminationWeek > (calendar.totalWeeks || preseasonSchedule.length || 0)).length}</div>
               <div className="text-sm">Still Alive</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-red-400">{managers.filter(m => deriveElimination(m).isEliminated).length}</div>
+              <div className="text-3xl font-bold text-red-400">{orderedManagers.filter(m => m.eliminationWeek <= (calendar.totalWeeks || preseasonSchedule.length || 0)).length}</div>
               <div className="text-sm">Eliminated</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
@@ -1292,6 +1518,14 @@
                       <div className="flex items-center gap-2">
                         <h2 className="text-xl font-bold">{mgr.name}</h2>
                         {isWinner && <span className="animate-trophy text-2xl">🏆</span>}
+                        {isEliminated ? (
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-red-500/80">Eliminated W{eliminationWeekComputed}</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-green-600/80">Alive</span>
+                        )}
+                        {mgr.buyback && (
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-purple-600/80" title="Used buyback">Buyback</span>
+                        )}
                       </div>
                       <p className="text-sm italic text-fuchsia-200">{mgr.teamLabel}</p>
                     </div>
@@ -1313,7 +1547,7 @@
                             #{mgr.draftOrder}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1" title={getMarginBreakdown(mgr)}>
                           <span className="text-sm">Margin:</span>
                           <span className="font-bold">{getCumulativeMargin(mgr)}</span>
                         </div>
@@ -1346,11 +1580,21 @@
                             else if (outcome && outcome.state === 'post' && outcome.isTie) resText = 'Tie';
                             const liveSuffix = (!pick.result && liveResult) ? ' (Live)' : '';
                             const manualSuffix = pick.manualResult ? ' (Manual override)' : '';
-                            return `Week ${pick.week} - ${(pick.team || 'TBD')} - ${resText}${liveSuffix}${manualSuffix}`;
+                            // Append stored note if available
+                            let noteSuffix = '';
+                            const matchup = pick.team ? findMatchupForTeam(pick.week, pick.team) : null;
+                            const stored = matchup ? getStoredGame(pick.week, matchup) : null;
+                            if (stored && stored.note) noteSuffix = ` • ${stored.note}`;
+                            return `Week ${pick.week} - ${(pick.team || 'TBD')} - ${resText}${liveSuffix}${manualSuffix}${noteSuffix}`;
                           })()}
                         >
                           <span className="font-semibold">W{pick.week}</span>
                           <span className="inline max-w-[10rem] truncate sm:max-w-none" title={pick.team || 'TBD'}>{pick.team || 'TBD'}</span>
+                          {(function(){
+                            const locked = pick.team ? isPickLocked(pick.week, pick.team) : false;
+                            if (!locked) return null;
+                            return <span className="ml-0.5" title="Pick locked (game started)">🔒</span>;
+                          })()}
                           {(function(){
                             const outcome = pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null;
                             const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
@@ -1393,6 +1637,77 @@
                           })()}
                         </div>
                       ))}
+                    </div>
+                    {/* Collapsible per-week margins table */}
+                    <div className="mt-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleBreakdown(mgr.name); }}
+                        className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs flex items-center gap-1"
+                        aria-expanded={openBreakdowns.has(mgr.name)}
+                        aria-controls={`br-${mgrIdx}`}
+                        title="Toggle margin breakdown"
+                      >
+                        <i className={`fas ${openBreakdowns.has(mgr.name) ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                        Margins breakdown
+                      </button>
+                      {openBreakdowns.has(mgr.name) && (
+                        <div id={`br-${mgrIdx}`} className="mt-2 overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-purple-800/30">
+                              <tr>
+                                <th className="p-1 text-left">Week</th>
+                                <th className="p-1 text-left">Team</th>
+                                <th className="p-1 text-left">Result</th>
+                                <th className="p-1 text-left">Margin</th>
+                                <th className="p-1 text-left">Running Total</th>
+                                <th className="p-1 text-left">Note</th>
+                                <th className="p-1 text-left">Lock</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(function(){
+                                let runningTotal = 0;
+                                return [...mgr.picks].sort((a,b)=>Number(a.week)-Number(b.week)).map((p, i) => {
+                                  const wk = Number(p.week);
+                                  if (!wk || !p.team) return null;
+                                  if (isEliminated && wk > Number(eliminationWeekComputed)) return null;
+                                  const out = getTeamOutcomeForWeek(p.team, wk);
+                                  let diff = 0, res = '—', isLoss = false, isWin = false, isTie = false;
+                                  if (out && out.state === 'post') {
+                                    diff = (out.score - out.oppScore) || 0;
+                                    isTie = !!out.isTie;
+                                    isWin = out.isWinner && !isTie;
+                                    isLoss = !out.isWinner && !isTie;
+                                  } else {
+                                    if (typeof p.margin === 'number') diff = p.margin;
+                                    isWin = p.result === 'W';
+                                    isLoss = p.result === 'L';
+                                    isTie = p.result === 'T';
+                                  }
+                                  if (isWin) res = 'W'; else if (isLoss) res = 'L'; else if (isTie) res = 'T'; else res = '—';
+                                  // Only add to running total for decided games (W/L). Tie contributes 0.
+                                  if (res === 'W' || res === 'L') runningTotal += diff || 0;
+                                  const matchup = findMatchupForTeam(wk, p.team);
+                                  const stored = matchup ? getStoredGame(wk, matchup) : null;
+                                  const note = stored && stored.note ? stored.note : (isTie ? 'Tie' : '');
+                                  const locked = isPickLocked(wk, p.team);
+                                  return (
+                                    <tr key={`row-${wk}-${i}`} className={i % 2 === 0 ? 'bg-purple-700/20' : 'bg-purple-700/10'}>
+                                      <td className="p-1">W{wk}</td>
+                                      <td className="p-1">{p.team}</td>
+                                      <td className="p-1">{res}</td>
+                                      <td className="p-1">{(res === 'W' || res === 'L' || res === 'T') ? diff : '—'}</td>
+                                      <td className="p-1">{runningTotal}</td>
+                                      <td className="p-1">{note || ''}</td>
+                                      <td className="p-1">{locked ? '🔒' : ''}</td>
+                                    </tr>
+                                  );
+                                });
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </div>
                   
@@ -1494,17 +1809,30 @@
                           displayTime = `Final`;
                         }
                       }
+                      // Determine lock and note status
+                      const outA = getTeamOutcomeForWeek(awayTeam, week.week);
+                      const outB = getTeamOutcomeForWeek(homeTeam, week.week);
+                      const locked = (outA && outA.state !== 'pre') || (outB && outB.state !== 'pre');
+                      let noteText = '';
+                      if (storedGame && storedGame.note) noteText = storedGame.note;
+                      else if ((storedGame && storedGame.awayScore === storedGame.homeScore) || (score && score.state === 'post' && score.awayScore === score.homeScore)) noteText = 'Tie';
                       
                       return (
                         <tr key={`${week.week}-${idx}`} className={idx % 2 === 0 ? 'bg-purple-700/30' : 'bg-purple-700/20'}>
                           <td className="p-2 text-center">{week.week}</td>
                           <td className="p-2 text-center">{game.date}</td>
-                          <td className="p-2 text-center">{displayTime}</td>
+                          <td className="p-2 text-center">
+                            <span>{displayTime}</span>
+                            {locked && <span className="ml-1" title="Kickoff passed (locked)">🔒</span>}
+                          </td>
                           <td className="p-2">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{awayTeam}</span>
                               <span className="text-gray-400">@</span>
                               <span className="font-medium">{homeTeam}</span>
+                              {noteText && (
+                                <i className="fas fa-circle-info text-amber-300 ml-1" title={noteText}></i>
+                              )}
                             </div>
                           </td>
                           <td className="p-2">
@@ -1529,6 +1857,10 @@
                                       title={`${manager.name} - ${manager.teamLabel}`}
                                     >
                                       {manager.name}
+                                      {(function(){
+                                        const l = pick && pick.team ? isPickLocked(week.week, pick.team) : false;
+                                        return l ? <span className="ml-1" title="Pick locked">🔒</span> : null;
+                                      })()}
                                     </span>
                                   );
                                 })}
@@ -1594,15 +1926,28 @@
                               displayTime = `Final`;
                             }
                           }
+                          // Determine lock and note
+                          const outA = getTeamOutcomeForWeek(awayTeam, week.week);
+                          const outB = getTeamOutcomeForWeek(homeTeam, week.week);
+                          const locked = (outA && outA.state !== 'pre') || (outB && outB.state !== 'pre');
+                          let noteText = '';
+                          if (storedGame && storedGame.note) noteText = storedGame.note;
+                          else if ((storedGame && storedGame.awayScore === storedGame.homeScore) || (score && score.state === 'post' && score.awayScore === score.homeScore)) noteText = 'Tie';
                           
                           return (
                             <div key={`${week.week}-m-${idx}`} className="rounded-lg bg-indigo-900/30 p-3">
                               <div className="flex items-center justify-between text-sm">
-                                <div className="font-semibold">{displayTime}</div>
+                                <div className="font-semibold">
+                                  <span>{displayTime}</span>
+                                  {locked && <span className="ml-1" title="Kickoff passed (locked)">🔒</span>}
+                                </div>
                                 <div className="text-xs text-purple-200">{game.date}</div>
                               </div>
                               <div className="mt-1 font-medium">
                                 {awayTeam} <span className="text-gray-400">@</span> {homeTeam}
+                                {noteText && (
+                                  <i className="fas fa-circle-info text-amber-300 ml-1" title={noteText}></i>
+                                )}
                               </div>
                               {managersWithPick.length > 0 ? (
                                 <div className="mt-2 flex flex-wrap gap-1">
@@ -1619,7 +1964,13 @@
                                     }
                                     
                                     return (
-                                      <span key={mgrIdx} className={`px-2 py-0.5 rounded-full text-[11px] ${cls}`}>{manager.name}</span>
+                                      <span key={mgrIdx} className={`px-2 py-0.5 rounded-full text-[11px] ${cls}`}>
+                                        {manager.name}
+                                        {(function(){
+                                          const l = pick && pick.team ? isPickLocked(week.week, pick.team) : false;
+                                          return l ? <span className="ml-1" title="Pick locked">🔒</span> : null;
+                                        })()}
+                                      </span>
                                     );
                                   })}
                                 </div>
