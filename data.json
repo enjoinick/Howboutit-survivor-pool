@@ -133,9 +133,10 @@
         {
           "week": 2,
           "team": "Denver Broncos",
-          "result": null,
+          "result": "W",
           "manualResult": true,
-          "lastUpdated": "2025-08-14T14:07:45.839Z"
+          "lastUpdated": "2025-08-17T12:22:20.000Z",
+          "margin": 20
         },
         {
           "week": 3,
@@ -143,8 +144,8 @@
           "result": null
         }
       ],
-      "eliminated": true,
-      "marginOfVictory": 0
+      "eliminated": false,
+      "marginOfVictory": 13
     },
     {
       "name": "Weston",
@@ -439,5 +440,16 @@
       }
     ]
   },
-  "lastUpdated": "2025-08-14T14:10:11.370Z"
+  "week2": [
+    {
+      "date": "2025-08-16",
+      "matchup": "Arizona Cardinals at Denver Broncos",
+      "homeTeam": "Denver Broncos",
+      "awayTeam": "Arizona Cardinals",
+      "homeScore": 27,
+      "awayScore": 7,
+      "winner": "Denver Broncos"
+    }
+  ],
+  "lastUpdated": "2025-08-17T12:22:20.000Z"
 }
