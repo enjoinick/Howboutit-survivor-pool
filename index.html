@@ -227,6 +227,8 @@
       const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan (GRAVEDIGGER)
       const westonAudioRef = useRef(null); // easter egg audio ref for Weston (DUUUVALL)
       const ryanAudioRef = useRef(null); // easter egg audio ref for Ryan (Opposite of Adults rmx)
+      // Global audio mute toggle (persisted)
+      const [muted, setMuted] = useState(localStorage.getItem('mutedAudio') === 'true');
       // Public auto-persist controls
       const [autoPersist, setAutoPersist] = useState(localStorage.getItem('autoPersistEnabled') === 'true');
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
@@ -850,8 +852,20 @@
           try { if (ref && ref.current) ref.current.pause(); } catch (e) {}
         });
       };
+      // Persist mute preference locally
+      useEffect(() => {
+        localStorage.setItem('mutedAudio', muted ? 'true' : 'false');
+      }, [muted]);
+      // When muting, pause any currently playing easter egg audio
+      useEffect(() => {
+        if (muted) {
+          try { pauseAllEggs(); } catch (e) {}
+        }
+      }, [muted]);
       const handleCardClick = (mgr) => {
         if (!mgr || !mgr.name) return;
+        // Respect global mute on mobile/desktop
+        if (muted) return;
         // Ryan easter egg
         if (mgr.name.trim().toLowerCase() === 'ryan' && ryanAudioRef.current) {
           try {
@@ -1105,10 +1119,10 @@
       return (
         <div className="p-4 space-y-6 max-w-7xl mx-auto">
           {/* Easter egg audio (hidden) */}
-          <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={jordanAudioRef} src="Audio/GraveDigger.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={westonAudioRef} src="Audio/Duuuval.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={ryanAudioRef} src="Audio/Opposite of Adults rmx.mp3" preload="auto" style={{ display: 'none' }} />
+          <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="auto" muted={muted} style={{ display: 'none' }} />
+          <audio ref={jordanAudioRef} src="Audio/GraveDigger.mp3" preload="auto" muted={muted} style={{ display: 'none' }} />
+          <audio ref={westonAudioRef} src="Audio/Duuuval.mp3" preload="auto" muted={muted} style={{ display: 'none' }} />
+          <audio ref={ryanAudioRef} src="Audio/Opposite of Adults rmx.mp3" preload="auto" muted={muted} style={{ display: 'none' }} />
           {/* Sticky Toolbar */}
           <div
             className="sticky top-0 z-50 glass rounded-xl px-3 py-2 -mx-1 md:mx-0 backdrop-blur animate-fade-in"
@@ -1129,6 +1143,15 @@
                   />
                   Auto-save to Gist
                 </label>
+                {/* Global mute toggle (visible on mobile) */}
+                <button
+                  onClick={() => setMuted(m => !m)}
+                  aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
+                  className={`inline-flex items-center justify-center p-2.5 rounded-full ${muted ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+                  title={muted ? 'Unmute' : 'Mute'}
+                >
+                  <i className={`fas ${muted ? 'fa-volume-mute' : 'fa-volume-up'}`}></i>
+                </button>
                 <button
                   onClick={loadData}
                   disabled={refreshing || loading}
