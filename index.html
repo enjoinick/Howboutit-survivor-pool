@@ -227,6 +227,8 @@
       const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan (GRAVEDIGGER)
       const westonAudioRef = useRef(null); // easter egg audio ref for Weston (DUUUVALL)
       const ryanAudioRef = useRef(null); // easter egg audio ref for Ryan (Opposite of Adults rmx)
+      // Global audio mute toggle (persisted)
+      const [muted, setMuted] = useState(localStorage.getItem('mutedAudio') === 'true');
       // Breakdown toggles per manager
       const [openBreakdowns, setOpenBreakdowns] = useState(new Set());
       // Public auto-persist controls
@@ -234,6 +236,48 @@
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
       const saveDebounceRef = useRef(null);
       const lastSavedHashRef = useRef('');
+
+      // Manual refresh throttling
+      const REFRESH_THROTTLE_MS = 15000; // 15s between manual refreshes
+      const lastManualRefreshRef = useRef(0);
+      const [cooldownMs, setCooldownMs] = useState(0);
+      const cooldownTimerRef = useRef(null);
+
+      const handleManualRefresh = () => {
+        const now = Date.now();
+        const remaining = lastManualRefreshRef.current + REFRESH_THROTTLE_MS - now;
+        if (remaining > 0) {
+          setCooldownMs(remaining);
+          if (!cooldownTimerRef.current) {
+            cooldownTimerRef.current = setInterval(() => {
+              setCooldownMs((ms) => {
+                const next = Math.max(0, ms - 1000);
+                if (next === 0 && cooldownTimerRef.current) {
+                  clearInterval(cooldownTimerRef.current);
+                  cooldownTimerRef.current = null;
+                }
+                return next;
+              });
+            }, 1000);
+          }
+          return;
+        }
+        lastManualRefreshRef.current = now;
+        setCooldownMs(REFRESH_THROTTLE_MS);
+        if (!cooldownTimerRef.current) {
+          cooldownTimerRef.current = setInterval(() => {
+            setCooldownMs((ms) => {
+              const next = Math.max(0, ms - 1000);
+              if (next === 0 && cooldownTimerRef.current) {
+                clearInterval(cooldownTimerRef.current);
+                cooldownTimerRef.current = null;
+              }
+              return next;
+            });
+          }, 1000);
+        }
+        loadData();
+      };
 
       // --- Data staleness helpers ---
       const STALE_MINUTES = 10; // consider data stale after 10 minutes without a successful refresh
@@ -245,6 +289,16 @@
         if (diffMs < 0) return 0;
         return Math.floor(diffMs / 60000);
       }, [lastUpdated]);
+
+      // Cleanup: clear refresh cooldown timer on unmount
+      useEffect(() => {
+        return () => {
+          if (cooldownTimerRef.current) {
+            clearInterval(cooldownTimerRef.current);
+            cooldownTimerRef.current = null;
+          }
+        };
+      }, []);
       const isStale = useMemo(() => ageMinutes === null || ageMinutes > STALE_MINUTES, [ageMinutes]);
 
       // --- Fetch with retry & exponential backoff (with jitter) ---
@@ -458,6 +512,18 @@
       useEffect(() => {
         localStorage.setItem('autoPersistEnabled', autoPersist ? 'true' : 'false');
       }, [autoPersist]);
+
+      // Persist mute preference locally
+      useEffect(() => {
+        localStorage.setItem('mutedAudio', muted ? 'true' : 'false');
+      }, [muted]);
+
+      // When muting, pause any currently playing easter egg audio
+      useEffect(() => {
+        if (muted) {
+          try { pauseAllEggs(); } catch (e) {}
+        }
+      }, [muted]);
 
       // Fetch scores periodically from ESPN and calculate margins
       useEffect(() => {
@@ -982,6 +1048,7 @@
       };
       const handleCardClick = (mgr) => {
         if (!mgr || !mgr.name) return;
+        if (muted) return; // Respect global mute
         // Ryan easter egg
         if (mgr.name.trim().toLowerCase() === 'ryan' && ryanAudioRef.current) {
           try {
@@ -1235,10 +1302,10 @@
       return (
         <div className="p-4 space-y-6 max-w-7xl mx-auto">
           {/* Easter egg audio (hidden) */}
-          <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={jordanAudioRef} src="Audio/GraveDigger.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={westonAudioRef} src="Audio/Duuuval.mp3" preload="auto" style={{ display: 'none' }} />
-          <audio ref={ryanAudioRef} src="Audio/Opposite of Adults rmx.mp3" preload="auto" style={{ display: 'none' }} />
+          <audio ref={joshAudioRef} src="Audio/ImACop.mp3" preload="none" muted={muted} style={{ display: 'none' }} />
+          <audio ref={jordanAudioRef} src="Audio/GraveDigger.mp3" preload="none" muted={muted} style={{ display: 'none' }} />
+          <audio ref={westonAudioRef} src="Audio/Duuuval.mp3" preload="none" muted={muted} style={{ display: 'none' }} />
+          <audio ref={ryanAudioRef} src="Audio/Opposite of Adults rmx.mp3" preload="none" muted={muted} style={{ display: 'none' }} />
           {/* Sticky Toolbar */}
           <div
             className="sticky top-0 z-50 glass rounded-xl px-3 py-2 -mx-1 md:mx-0 backdrop-blur animate-fade-in"
@@ -1263,12 +1330,20 @@
                   Auto-save to Gist
                 </label>
                 <button
-                  onClick={loadData}
-                  disabled={refreshing || loading}
+                  onClick={() => setMuted(m => !m)}
+                  aria-label={muted ? 'Unmute audio' : 'Mute audio'}
+                  className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${muted ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+                  title={muted ? 'Audio muted' : 'Audio on'}
+                >
+                  <i className={`fas ${muted ? 'fa-volume-xmark' : 'fa-volume-high'}`}></i>
+                </button>
+                <button
+                  onClick={handleManualRefresh}
+                  disabled={refreshing || loading || cooldownMs > 0}
                   aria-label="Refresh data"
                   aria-busy={refreshing}
-                  className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
-                  title="Refresh data"
+                  className={`hidden md:inline-flex items-center justify-center p-2.5 rounded-full ${(refreshing || cooldownMs > 0) ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} transition-colors`}
+                  title={`Refresh data${cooldownMs > 0 ? ` (wait ${Math.ceil(cooldownMs/1000)}s)` : ''}`}
                 >
                   <i className={`fas fa-sync-alt ${refreshing ? 'animate-rotate' : ''}`}></i>
                 </button>
@@ -1284,12 +1359,12 @@
                 Live data is stale{typeof ageMinutes === 'number' ? ` (${ageMinutes} min${ageMinutes === 1 ? '' : 's'} old)` : ''}. You can try refreshing.
               </span>
               <button
-                onClick={loadData}
-                disabled={refreshing || loading}
-                className={`ml-auto inline-flex items-center justify-center px-2.5 py-1.5 rounded ${refreshing ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} text-white text-xs transition-colors`}
+                onClick={handleManualRefresh}
+                disabled={refreshing || loading || cooldownMs > 0}
+                className={`ml-auto inline-flex items-center justify-center px-2.5 py-1.5 rounded ${(refreshing || cooldownMs > 0) ? 'bg-gray-600' : 'bg-purple-600 hover:bg-purple-700'} text-white text-xs transition-colors`}
               >
                 <i className={`fas fa-sync-alt mr-1 ${refreshing ? 'animate-rotate' : ''}`}></i>
-                Refresh
+                {cooldownMs > 0 ? `Wait ${Math.ceil(cooldownMs/1000)}s` : 'Refresh'}
               </button>
             </div>
           )}
@@ -1345,11 +1420,11 @@
               <div className="text-sm">Managers</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-green-400">{managers.filter(m => !deriveElimination(m).isEliminated).length}</div>
+              <div className="text-3xl font-bold text-green-400">{orderedManagers.filter(m => m.eliminationWeek > (calendar.totalWeeks || preseasonSchedule.length || 0)).length}</div>
               <div className="text-sm">Still Alive</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-red-400">{managers.filter(m => deriveElimination(m).isEliminated).length}</div>
+              <div className="text-3xl font-bold text-red-400">{orderedManagers.filter(m => m.eliminationWeek <= (calendar.totalWeeks || preseasonSchedule.length || 0)).length}</div>
               <div className="text-sm">Eliminated</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">

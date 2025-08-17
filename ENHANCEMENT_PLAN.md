@@ -25,7 +25,7 @@ Scope: UX, Robustness, Admin safety, Performance. Excludes accessibility and ema
 1) UX
 - Status badges on manager rows: "Alive", "Eliminated (W#)", and optional "Buyback".
 - Margin clarity: hover tooltip breakdown week-by-week; elimination loss (negative) included.
-- Collapsible per-week margins table under each manager row.
+- Collapsible per-week margins table under each manager row with running totals.
 - Display tie/early-ending notes from `gameResults` on schedule and manager rows.
 - Pick lock indicators (based on kickoff) to show locked vs editable picks.
 
@@ -103,6 +103,19 @@ Phase 4 – Performance Polish
 - [ ] Throttle + memoize
 - [ ] Lazy-load audio + mute toggle
 
+## Acceptance Criteria (Feature-level)
+
+- __Collapsible margins table__
+  - Columns: Week, Team, Result, Margin, Running Total, Note, Lock.
+  - Running Total sums decided margins only (W/L). Ties show margin 0 and do not change the total.
+
+- __Notes tooltips__
+  - Uses singular `note` from `gameResults.weekN[i].note`.
+  - Info icon appears on schedule rows and adjacent to manager picks; hover/tap shows the note (e.g., ties or early-ending).
+
+- __Pick lock indicators__
+  - Locked when live/post state indicates game started or finished.
+  - Fallback: parse ET kickoff from `preseasonSchedule` (`date` + `time`, `-04:00` DST); if current time ≥ kickoff, show lock icon.
 -
 ## Next Steps (immediate)
 
