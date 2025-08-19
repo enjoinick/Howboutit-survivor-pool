@@ -7,7 +7,7 @@
         "teams": 10,
         "year": 2025,
         "topN": 100,
-        "proxyBase": "https://curly-wind-d55c.enjoinick.workers.dev/"
+        "proxyBase": "https://curly-wind-d55c.enjoinick.workers.dev"
       }
     }
   }
