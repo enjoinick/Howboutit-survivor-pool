@@ -237,6 +237,15 @@
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
       const saveDebounceRef = useRef(null);
       const lastSavedHashRef = useRef('');
+      // Feature flags and Fantasy ADP state
+      const [features, setFeatures] = useState({
+        showFantasyADP: false,
+        adp: { scoring: 'ppr', teams: 10, year: 2025, topN: 100 }
+      });
+      const [fantasyADP, setFantasyADP] = useState([]);
+      const [adpLoading, setAdpLoading] = useState(false);
+      const [adpError, setAdpError] = useState('');
+      const [adpPosition, setAdpPosition] = useState('ALL');
 
       // Manual refresh throttling
       const REFRESH_THROTTLE_MS = 15000; // 15s between manual refreshes
@@ -319,6 +328,134 @@
         }
         throw error || new Error('Fetch failed');
       }
+
+      // --- Fantasy ADP fetch ---
+      const buildAdpUrl = (adpCfg) => {
+        const scoring = (adpCfg && adpCfg.scoring) ? String(adpCfg.scoring).toLowerCase() : 'ppr';
+        const path = scoring === 'standard' ? 'standard' : 'ppr';
+        const teams = (adpCfg && adpCfg.teams) || 10;
+        const year = (adpCfg && adpCfg.year) || new Date().getFullYear();
+        const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        if (isLocal) {
+          // Use local proxy to bypass CORS during local development
+          return `/proxy/adp?scoring=${encodeURIComponent(path)}&teams=${encodeURIComponent(teams)}&year=${encodeURIComponent(year)}`;
+        }
+        return `https://fantasyfootballcalculator.com/api/v1/adp/${path}?teams=${encodeURIComponent(teams)}&year=${encodeURIComponent(year)}`;
+      };
+
+      // --- Gist fallback for ADP ---
+      const pickGistAdpFile = (meta, adpCfg) => {
+        const scoring = (adpCfg && adpCfg.scoring) ? String(adpCfg.scoring).toLowerCase() : 'ppr';
+        const path = scoring === 'standard' ? 'standard' : 'ppr';
+        const teams = (adpCfg && adpCfg.teams) || 10;
+        const year = (adpCfg && adpCfg.year) || new Date().getFullYear();
+        const files = (meta && meta.files) || {};
+        const candidates = [
+          'adp.json',
+          `adp_${path}.json`,
+          `adp_${path}_${teams}.json`,
+          `adp_${path}_${teams}_${year}.json`
+        ];
+        for (const name of candidates) {
+          if (files[name]) return files[name];
+        }
+        // loose fallback: any adp*.json
+        for (const key in files) {
+          if (/^adp.*\.json$/i.test(key)) return files[key];
+        }
+        return null;
+      };
+
+      const fetchADPFromGist = async (adpCfg) => {
+        const id = (gistIdState || localStorage.getItem('gistId') || '').trim();
+        if (!id) throw new Error('no_gist_id');
+        const metaRes = await fetch(`https://api.github.com/gists/${id}`);
+        if (!metaRes.ok) throw new Error(`gist_meta_${metaRes.status}`);
+        const meta = await metaRes.json();
+        const file = pickGistAdpFile(meta, adpCfg);
+        if (!file || !file.raw_url) throw new Error('no_adp_file_in_gist');
+        const rawRes = await fetch(file.raw_url);
+        if (!rawRes.ok) throw new Error(`gist_raw_${rawRes.status}`);
+        const data = await rawRes.json();
+        const players = Array.isArray(data) ? data : (Array.isArray(data && data.players) ? data.players : []);
+        if (!players.length) throw new Error('empty_adp_data');
+        return players;
+      };
+
+      const fetchFantasyADP = async (adpCfg) => {
+        try {
+          setAdpLoading(true);
+          setAdpError('');
+          const url = buildAdpUrl(adpCfg);
+          const res = await fetchWithRetry(url, {}, 4, 800, 2);
+          const json = await res.json();
+          const players = Array.isArray(json && json.players) ? json.players : [];
+          const normalized = players
+            .filter(p => p && typeof p.adp === 'number' && p.name)
+            .map(p => ({
+              id: p.player_id,
+              name: p.name,
+              position: p.position,
+              team: p.team,
+              adp: p.adp,
+              adpFormatted: p.adp_formatted,
+              timesDrafted: p.times_drafted,
+              high: p.high,
+              low: p.low,
+              stdev: p.stdev,
+              bye: p.bye
+            }))
+            .sort((a, b) => a.adp - b.adp);
+
+          const limit = (adpCfg && adpCfg.topN) || 100;
+          setFantasyADP(normalized.slice(0, Math.max(1, limit)));
+        } catch (err) {
+          console.warn('ADP API fetch failed, attempting Gist fallback:', err);
+          try {
+            const players = await fetchADPFromGist(adpCfg);
+            const normalized = players
+              .filter(p => p && (typeof p.adp === 'number' || typeof p.ADP === 'number') && p.name)
+              .map(p => ({
+                id: p.player_id || p.id,
+                name: p.name,
+                position: p.position,
+                team: p.team,
+                adp: typeof p.adp === 'number' ? p.adp : p.ADP,
+                adpFormatted: p.adp_formatted || String(typeof p.adp === 'number' ? p.adp : p.ADP),
+                timesDrafted: p.times_drafted || p.timesDrafted,
+                high: p.high,
+                low: p.low,
+                stdev: p.stdev,
+                bye: p.bye
+              }))
+              .sort((a, b) => a.adp - b.adp);
+            const limit = (adpCfg && adpCfg.topN) || 100;
+            setFantasyADP(normalized.slice(0, Math.max(1, limit)));
+            setAdpError('Using cached ADP from Gist');
+          } catch (fallbackErr) {
+            console.error('ADP Gist fallback failed:', fallbackErr);
+            setAdpError('Failed to load ADP data from API and Gist.');
+            setFantasyADP([]);
+          }
+        } finally {
+          setAdpLoading(false);
+        }
+      };
+
+      const fetchADPIfEnabled = async (cfgFeatures) => {
+        const feat = cfgFeatures || features;
+        if (feat && feat.showFantasyADP) {
+          await fetchFantasyADP(feat.adp || features.adp);
+        }
+      };
+
+      const filteredAdp = useMemo(() => {
+        let arr = Array.isArray(fantasyADP) ? fantasyADP : [];
+        if (adpPosition && adpPosition !== 'ALL') {
+          arr = arr.filter(p => String(p.position).toUpperCase() === adpPosition);
+        }
+        return arr;
+      }, [fantasyADP, adpPosition]);
 
       // --- Easter Egg: Live Joke Ticker (continuous stream) ---
       const tickerWrapRef = useRef(null);
@@ -452,14 +589,38 @@
         const timestamp = new Date().getTime();
         // Try to read gistId from config.json
         let gistId = '';
+        let cfgFeatures = null;
         try {
           const cfgRes = await fetch(`config.json?t=${timestamp}`);
           if (cfgRes.ok) {
             const cfg = await cfgRes.json();
             if (cfg && cfg.gistId) gistId = cfg.gistId.trim();
+            if (cfg && cfg.features) {
+              cfgFeatures = cfg.features;
+              setFeatures(prev => ({
+                ...prev,
+                ...cfg.features,
+                adp: { ...prev.adp, ...(cfg.features.adp || {}) }
+              }));
+            }
           }
         } catch (e) {
           // no config found; will fall back below
+        }
+        // LocalStorage ADP override (optional)
+        try {
+          const lsOverrideRaw = localStorage.getItem('adpOverride');
+          if (lsOverrideRaw) {
+            const lsOverride = JSON.parse(lsOverrideRaw);
+            const mergedAdp = { ...((cfgFeatures && cfgFeatures.adp) || features.adp), ...(lsOverride || {}) };
+            setFeatures(prev => ({
+              ...prev,
+              adp: mergedAdp
+            }));
+            cfgFeatures = { ...(cfgFeatures || {}), adp: mergedAdp };
+          }
+        } catch (e) {
+          // ignore bad JSON
         }
         // Fallback to localStorage gistId if not in config
         if (!gistId) {
@@ -483,6 +644,7 @@
             setLastUpdated(data.lastUpdated || '');
             setLoading(false);
             setRefreshing(false);
+            await fetchADPIfEnabled(cfgFeatures);
             return;
           } catch (err) {
             console.error('Gist load failed, falling back to local data.json:', err);
@@ -497,6 +659,7 @@
           setLastUpdated(data.lastUpdated || '');
           setLoading(false);
           setRefreshing(false);
+          await fetchADPIfEnabled(cfgFeatures);
         } catch (error) {
           console.error('Error loading data:', error);
           setLoading(false);
@@ -2110,6 +2273,105 @@
               </div>
             )}
           </section>
+
+          {/* Fantasy ADP Section */}
+          {features.showFantasyADP && (
+            <section className="glass rounded-2xl p-5 overflow-auto animate-fade-in mt-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <i className="fas fa-list-ol"></i> Fantasy ADP
+                  <span className="ml-2 text-sm px-2 py-0.5 rounded-full bg-purple-600/60">{(features.adp && String(features.adp.scoring).toUpperCase()) || 'PPR'}</span>
+                </h2>
+                <div className="flex items-center gap-2 text-xs text-purple-200">
+                  <span className="px-2 py-0.5 rounded bg-indigo-700/50">Year: {(features.adp && features.adp.year) || new Date().getFullYear()}</span>
+                  <span className="px-2 py-0.5 rounded bg-indigo-700/50">Teams: {(features.adp && features.adp.teams) || 10}</span>
+                  <span className="px-2 py-0.5 rounded bg-indigo-700/50">Top: {(features.adp && features.adp.topN) || 100}</span>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="mt-4 flex items-center gap-3 flex-wrap">
+                <div className="inline-flex rounded overflow-hidden border border-white/10">
+                  {['ALL','RB','WR','QB','TE'].map(pos => (
+                    <button
+                      key={pos}
+                      onClick={() => setAdpPosition(pos)}
+                      className={`px-3 py-1 text-sm ${adpPosition === pos ? 'bg-purple-600' : 'bg-indigo-800/40 hover:bg-indigo-700/40'}`}
+                    >{pos}</button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => fetchFantasyADP(features.adp)}
+                  className="px-3 py-1 text-sm rounded bg-purple-600 hover:bg-purple-700"
+                  disabled={adpLoading}
+                >
+                  <i className={`fas fa-sync-alt mr-1 ${adpLoading ? 'animate-rotate' : ''}`}></i>
+                  Refresh ADP
+                </button>
+              </div>
+
+              {/* States */}
+              {adpLoading && (
+                <div className="text-center py-6 text-purple-200">Loading ADP...</div>
+              )}
+              {!adpLoading && adpError && (
+                <div className="text-center py-6">
+                  <p className="text-red-300 mb-2">{adpError}</p>
+                  <button onClick={() => fetchFantasyADP(features.adp)} className="px-3 py-1 text-sm rounded bg-purple-600 hover:bg-purple-700">Try Again</button>
+                </div>
+              )}
+
+              {!adpLoading && !adpError && filteredAdp.length > 0 && (
+                <>
+                  {/* Desktop table */}
+                  <div className="hidden md:block overflow-x-auto mt-4">
+                    <table className="w-full text-sm">
+                      <thead className="bg-indigo-800/40">
+                        <tr>
+                          <th className="p-2 text-center">#</th>
+                          <th className="p-2 text-left">Player</th>
+                          <th className="p-2 text-center">Pos</th>
+                          <th className="p-2 text-center">Team</th>
+                          <th className="p-2 text-center">ADP</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredAdp.map((p, idx) => (
+                          <tr key={p.id || idx} className={idx % 2 === 0 ? 'bg-indigo-700/30' : 'bg-indigo-700/20'}>
+                            <td className="p-2 text-center font-mono">{idx + 1}</td>
+                            <td className="p-2">
+                              <div className="font-medium">{p.name}</div>
+                            </td>
+                            <td className="p-2 text-center">{p.position}</td>
+                            <td className="p-2 text-center">{p.team}</td>
+                            <td className="p-2 text-center font-mono">{p.adpFormatted || p.adp}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile cards */}
+                  <div className="md:hidden mt-4 space-y-2">
+                    {filteredAdp.map((p, idx) => (
+                      <div key={p.id || idx} className="rounded-lg bg-indigo-900/30 p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs px-2 py-0.5 rounded-full bg-purple-300 text-black font-semibold">#{idx + 1}</div>
+                          <div className="text-xs text-purple-200 font-mono">ADP: {p.adpFormatted || p.adp}</div>
+                        </div>
+                        <div className="mt-1 font-semibold">{p.name}</div>
+                        <div className="text-sm text-purple-200">{p.position} • {p.team}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!adpLoading && !adpError && filteredAdp.length === 0 && (
+                <div className="text-center py-6 text-purple-200">No ADP data available.</div>
+              )}
+            </section>
+          )}
 
           {/* Mobile Refresh FAB */}
           <button

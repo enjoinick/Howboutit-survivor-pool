@@ -1,5 +1,12 @@
 {
-    "gistId": "870a75b6f5a4a7797bc90e6eefdd90a3"
+    "gistId": "870a75b6f5a4a7797bc90e6eefdd90a3",
+    "features": {
+      "showFantasyADP": true,
+      "adp": {
+        "scoring": "ppr",
+        "teams": 10,
+        "year": 2025,
+        "topN": 100
+      }
+    }
   }
-
-  
