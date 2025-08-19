@@ -1,5 +1,5 @@
 /* Minimal service worker for installability and basic offline support */
-const CACHE_NAME = 'survivor-pool-v1-20250818b';
+const CACHE_NAME = 'survivor-pool-v1-20250819a';
 const ASSETS = [
   './',
   './index.html',
@@ -31,13 +31,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
-
-<<<<<<< HEAD
-  const url = new URL(req.url);
-=======
   // Do not intercept cross-origin requests; let the browser handle them.
+  let url;
   try {
-    const url = new URL(req.url);
+    url = new URL(req.url);
     if (url.origin !== self.location.origin) {
       return;
     }
@@ -45,8 +42,6 @@ self.addEventListener('fetch', (event) => {
     // If URL parsing fails, avoid intercepting to be safe
     return;
   }
-
->>>>>>> 715f34d1866edd55da4ca2a65038039ec8e725f2
   const accept = req.headers.get('accept') || '';
   const isHTML = accept.includes('text/html');
 
@@ -79,14 +74,12 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-
-<<<<<<< HEAD
-  // Cache-first for non-HTML, but always return a valid Response
+  // Cache-first for non-HTML, with safe fallbacks and background update
   event.respondWith(
     (async () => {
       const cached = await caches.match(req);
       if (cached) {
-        // Kick off a background update
+        // Background update
         fetch(req)
           .then((res) => {
             if (res && res.ok) {
@@ -106,32 +99,5 @@ self.addEventListener('fetch', (event) => {
         return new Response('', { status: 504 });
       }
     })()
-=======
-  // Network-first and do not cache for local proxy endpoints (dynamic data)
-  try {
-    const url = new URL(req.url);
-    if (url.origin === self.location.origin && url.pathname.startsWith('/proxy/')) {
-      event.respondWith(
-        fetch(req).catch(() => caches.match(req) || new Response('', { status: 504 }))
-      );
-      return;
-    }
-  } catch (e) {}
-
-  // Cache-first for others
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          if (res.ok && new URL(req.url).origin === self.location.origin) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => cached || new Response('', { status: 504 }));
-      return cached || network;
-    })
->>>>>>> 715f34d1866edd55da4ca2a65038039ec8e725f2
   );
 });

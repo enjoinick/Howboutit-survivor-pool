@@ -396,6 +396,7 @@
           setAdpLoading(true);
           setAdpError('');
           const url = buildAdpUrl(adpCfg);
+          console.debug('[ADP] Request URL ->', url, 'adpCfg:', adpCfg);
           const res = await fetchWithRetry(url, {}, 4, 800, 2);
           const json = await res.json();
           const players = Array.isArray(json && json.players) ? json.players : [];
@@ -606,6 +607,7 @@
             if (cfg && cfg.gistId) gistId = cfg.gistId.trim();
             if (cfg && cfg.features) {
               cfgFeatures = cfg.features;
+              console.debug('[Config] Loaded features from config.json:', cfg.features);
               setFeatures(prev => ({
                 ...prev,
                 ...cfg.features,
