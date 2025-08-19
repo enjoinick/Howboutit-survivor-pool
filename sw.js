@@ -32,6 +32,17 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
+  // Do not intercept cross-origin requests; let the browser handle them.
+  try {
+    const url = new URL(req.url);
+    if (url.origin !== self.location.origin) {
+      return;
+    }
+  } catch (e) {
+    // If URL parsing fails, avoid intercepting to be safe
+    return;
+  }
+
   const accept = req.headers.get('accept') || '';
   const isHTML = accept.includes('text/html');
 
@@ -49,6 +60,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-first and do not cache for local proxy endpoints (dynamic data)
+  try {
+    const url = new URL(req.url);
+    if (url.origin === self.location.origin && url.pathname.startsWith('/proxy/')) {
+      event.respondWith(
+        fetch(req).catch(() => caches.match(req) || new Response('', { status: 504 }))
+      );
+      return;
+    }
+  } catch (e) {}
+
   // Cache-first for others
   event.respondWith(
     caches.match(req).then((cached) => {
@@ -60,7 +82,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => cached);
+        .catch(() => cached || new Response('', { status: 504 }));
       return cached || network;
     })
   );

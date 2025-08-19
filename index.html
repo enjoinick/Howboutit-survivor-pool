@@ -334,7 +334,51 @@
         const path = scoring === 'standard' ? 'standard' : 'ppr';
         const teams = (adpCfg && adpCfg.teams) || 10;
         const year = (adpCfg && adpCfg.year) || new Date().getFullYear();
+        const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        if (isLocal) {
+          // Use local proxy to bypass CORS during local development
+          return `/proxy/adp?scoring=${encodeURIComponent(path)}&teams=${encodeURIComponent(teams)}&year=${encodeURIComponent(year)}`;
+        }
         return `https://fantasyfootballcalculator.com/api/v1/adp/${path}?teams=${encodeURIComponent(teams)}&year=${encodeURIComponent(year)}`;
+      };
+
+      // --- Gist fallback for ADP ---
+      const pickGistAdpFile = (meta, adpCfg) => {
+        const scoring = (adpCfg && adpCfg.scoring) ? String(adpCfg.scoring).toLowerCase() : 'ppr';
+        const path = scoring === 'standard' ? 'standard' : 'ppr';
+        const teams = (adpCfg && adpCfg.teams) || 10;
+        const year = (adpCfg && adpCfg.year) || new Date().getFullYear();
+        const files = (meta && meta.files) || {};
+        const candidates = [
+          'adp.json',
+          `adp_${path}.json`,
+          `adp_${path}_${teams}.json`,
+          `adp_${path}_${teams}_${year}.json`
+        ];
+        for (const name of candidates) {
+          if (files[name]) return files[name];
+        }
+        // loose fallback: any adp*.json
+        for (const key in files) {
+          if (/^adp.*\.json$/i.test(key)) return files[key];
+        }
+        return null;
+      };
+
+      const fetchADPFromGist = async (adpCfg) => {
+        const id = (gistIdState || localStorage.getItem('gistId') || '').trim();
+        if (!id) throw new Error('no_gist_id');
+        const metaRes = await fetch(`https://api.github.com/gists/${id}`);
+        if (!metaRes.ok) throw new Error(`gist_meta_${metaRes.status}`);
+        const meta = await metaRes.json();
+        const file = pickGistAdpFile(meta, adpCfg);
+        if (!file || !file.raw_url) throw new Error('no_adp_file_in_gist');
+        const rawRes = await fetch(file.raw_url);
+        if (!rawRes.ok) throw new Error(`gist_raw_${rawRes.status}`);
+        const data = await rawRes.json();
+        const players = Array.isArray(data) ? data : (Array.isArray(data && data.players) ? data.players : []);
+        if (!players.length) throw new Error('empty_adp_data');
+        return players;
       };
 
       const fetchFantasyADP = async (adpCfg) => {
@@ -365,9 +409,33 @@
           const limit = (adpCfg && adpCfg.topN) || 100;
           setFantasyADP(normalized.slice(0, Math.max(1, limit)));
         } catch (err) {
-          console.error('ADP fetch failed:', err);
-          setAdpError('Failed to load ADP data.');
-          setFantasyADP([]);
+          console.warn('ADP API fetch failed, attempting Gist fallback:', err);
+          try {
+            const players = await fetchADPFromGist(adpCfg);
+            const normalized = players
+              .filter(p => p && (typeof p.adp === 'number' || typeof p.ADP === 'number') && p.name)
+              .map(p => ({
+                id: p.player_id || p.id,
+                name: p.name,
+                position: p.position,
+                team: p.team,
+                adp: typeof p.adp === 'number' ? p.adp : p.ADP,
+                adpFormatted: p.adp_formatted || String(typeof p.adp === 'number' ? p.adp : p.ADP),
+                timesDrafted: p.times_drafted || p.timesDrafted,
+                high: p.high,
+                low: p.low,
+                stdev: p.stdev,
+                bye: p.bye
+              }))
+              .sort((a, b) => a.adp - b.adp);
+            const limit = (adpCfg && adpCfg.topN) || 100;
+            setFantasyADP(normalized.slice(0, Math.max(1, limit)));
+            setAdpError('Using cached ADP from Gist');
+          } catch (fallbackErr) {
+            console.error('ADP Gist fallback failed:', fallbackErr);
+            setAdpError('Failed to load ADP data from API and Gist.');
+            setFantasyADP([]);
+          }
         } finally {
           setAdpLoading(false);
         }
