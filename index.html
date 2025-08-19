@@ -237,6 +237,8 @@
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
       const saveDebounceRef = useRef(null);
       const lastSavedHashRef = useRef('');
+      // Keep a synchronous reference to gistId to avoid async state timing issues
+      const gistIdRef = useRef((localStorage.getItem('gistId') || '').trim());
       // Feature flags and Fantasy ADP state
       const [features, setFeatures] = useState({
         showFantasyADP: false,
@@ -340,6 +342,13 @@
           // Use local proxy to bypass CORS during local development
           return `/proxy/adp?scoring=${encodeURIComponent(path)}&teams=${encodeURIComponent(teams)}&year=${encodeURIComponent(year)}`;
         }
+        // If a hosted proxyBase is configured, prefer it on production (same query contract as local proxy)
+        const proxyBase = adpCfg && adpCfg.proxyBase ? String(adpCfg.proxyBase).trim() : '';
+        if (proxyBase) {
+          const base = proxyBase.endsWith('/') ? proxyBase.slice(0, -1) : proxyBase;
+          return `${base}?scoring=${encodeURIComponent(path)}&teams=${encodeURIComponent(teams)}&year=${encodeURIComponent(year)}`;
+        }
+        // Fallback: direct API (will CORS-fail on Pages, then we use Gist fallback)
         return `https://fantasyfootballcalculator.com/api/v1/adp/${path}?teams=${encodeURIComponent(teams)}&year=${encodeURIComponent(year)}`;
       };
 
@@ -367,7 +376,7 @@
       };
 
       const fetchADPFromGist = async (adpCfg) => {
-        const id = (gistIdState || localStorage.getItem('gistId') || '').trim();
+        const id = (gistIdRef.current || gistIdState || localStorage.getItem('gistId') || '').trim();
         if (!id) throw new Error('no_gist_id');
         const metaRes = await fetch(`https://api.github.com/gists/${id}`);
         if (!metaRes.ok) throw new Error(`gist_meta_${metaRes.status}`);
@@ -627,6 +636,8 @@
           const lsId = (localStorage.getItem('gistId') || '').trim();
           if (lsId) gistId = lsId;
         }
+        // Store gistId in a ref for immediate availability to fetchers
+        gistIdRef.current = gistId;
         setGistIdState(gistId);
         // If gistId configured, try Gist first
         if (gistId) {

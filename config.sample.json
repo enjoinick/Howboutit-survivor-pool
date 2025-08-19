@@ -1,3 +1,13 @@
 {
-  "gistId": "YOUR_GIST_ID_HERE"
+  "gistId": "YOUR_GIST_ID_HERE",
+  "features": {
+    "showFantasyADP": true,
+    "adp": {
+      "scoring": "ppr",
+      "teams": 10,
+      "year": 2025,
+      "topN": 100,
+      "proxyBase": ""
+    }
+  }
 }
