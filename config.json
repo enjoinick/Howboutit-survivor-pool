@@ -3,6 +3,11 @@
     "gistId": "870a75b6f5a4a7797bc90e6eefdd90a3",
     "features": {
       "showFantasyADP": true,
+      "pickSubmission": {
+        "enabled": true,
+        "apiBase": "https://howboutit-picks.enjoinick.workers.dev",
+        "pollSeconds": 12
+      },
       "adp": {
         "scoring": "ppr",
         "teams": 10,

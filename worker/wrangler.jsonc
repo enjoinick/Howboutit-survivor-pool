@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "howboutit-picks",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-12",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "vars": {
+    "SEASON": "2026",
+    "GIST_ID": "870a75b6f5a4a7797bc90e6eefdd90a3",
+    "ALLOWED_ORIGINS": "https://enjoinick.github.io,http://127.0.0.1:8765,http://localhost:8765"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PICK_QUEUE",
+        "class_name": "PickQueueCoordinator"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PickQueueCoordinator"]
+    }
+  ]
+}

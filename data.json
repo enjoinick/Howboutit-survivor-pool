@@ -1,5 +1,27 @@
 {
   "season": 2026,
+  "pickQueue": {
+    "enabled": true,
+    "activeWeek": 1,
+    "order": [
+      "Weston",
+      "Jordan",
+      "Josh",
+      "Chris",
+      "Austin",
+      "Matt",
+      "Kevin",
+      "Michael",
+      "Ryan",
+      "Nick"
+    ],
+    "deadlines": {
+      "1": "2026-08-13T19:00:00-04:00",
+      "2": "2026-08-20T20:00:00-04:00",
+      "3": "2026-08-27T19:00:00-04:00"
+    },
+    "lastSubmission": null
+  },
   "managers": [
     {
       "name": "Kevin",
