@@ -9,6 +9,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+  <script src="ranking.js"></script>
   <!-- Babel Standalone enables JSX in the browser -->
   <script src="https://unpkg.com/@babel/standalone@7.28.5/babel.min.js" integrity="sha384-mP9sW+eK08VvAmlxEkn9Kn6egvKFtnFEfW7/u9feUWAIoTvnYAzT4NwsskP+uWUd" crossorigin="anonymous"></script>
   <!-- Font Awesome for icons -->
@@ -183,7 +184,7 @@
           season: { type: 'integer', const: SEASON_YEAR },
           pickQueue: {
             type: 'object',
-            required: ['enabled', 'activeWeek', 'orders', 'deadlines'],
+            required: ['enabled', 'activeWeek', 'orders', 'orderModes', 'deadlines'],
             additionalProperties: true,
             properties: {
               enabled: { type: 'boolean' },
@@ -198,6 +199,11 @@
                   uniqueItems: true,
                   items: { type: 'string', minLength: 1 }
                 }
+              },
+              orderModes: {
+                type: 'object',
+                required: ['1', '2', '3'],
+                additionalProperties: { enum: ['manual', 'standings'] }
               },
               deadlines: { type: 'object', additionalProperties: { type: 'string' } }
             }
@@ -470,13 +476,27 @@
         }
       };
       
+      const syncComputedManagerState = (poolManagers) => poolManagers.map((manager) => {
+        const standing = SurvivorRanking.analyzeManager(manager, {
+          totalWeeks: 3,
+          throughWeek: 3,
+          activeWeek: Number((completeData.pickQueue && completeData.pickQueue.activeWeek) || 1)
+        });
+        return {
+          ...manager,
+          eliminated: standing.isEliminated,
+          marginOfVictory: standing.totalMargin,
+          ...(standing.eliminationWeek ? { eliminationWeek: standing.eliminationWeek } : { eliminationWeek: null })
+        };
+      });
+
       const handlePickChange = (managerIndex, weekIndex, value) => {
         // Prevent duplicate team picks for the same manager
         if (value && managers[managerIndex].picks.some((p, idx) => idx !== weekIndex && p.team === value)) {
           showNotification('This team is already used in another week for this manager', 'error');
           return;
         }
-        const updatedManagers = [...managers];
+        const updatedManagers = structuredClone(managers);
         updatedManagers[managerIndex].picks[weekIndex] = {
           ...updatedManagers[managerIndex].picks[weekIndex],
           team: value,
@@ -488,7 +508,7 @@
       };
       
       const handleResultChange = (managerIndex, weekIndex, value) => {
-        const updatedManagers = [...managers];
+        const updatedManagers = structuredClone(managers);
         updatedManagers[managerIndex].picks[weekIndex] = {
           ...updatedManagers[managerIndex].picks[weekIndex],
           result: value,
@@ -496,21 +516,13 @@
           lastUpdated: new Date().toISOString()
         };
         
-        // Update elimination status
-        if (value === 'L') {
-          updatedManagers[managerIndex].eliminated = true;
-        } else {
-          // Check if manager has any other losses
-          const hasLoss = updatedManagers[managerIndex].picks.some(p => p.result === 'L');
-          updatedManagers[managerIndex].eliminated = hasLoss;
-        }
-        
-        setManagers(updatedManagers);
-        updateJsonData(updatedManagers);
+        const computedManagers = syncComputedManagerState(updatedManagers);
+        setManagers(computedManagers);
+        updateJsonData(computedManagers);
       };
       
       const handleManagerInfoChange = (managerIndex, field, value) => {
-        const updatedManagers = [...managers];
+        const updatedManagers = structuredClone(managers);
         if (field === 'lastYearRank') {
           updatedManagers[managerIndex][field] = parseInt(value);
         } else if (field === 'carryMargin') {
@@ -518,19 +530,18 @@
           updatedManagers[managerIndex][field] = Number.isFinite(num) ? num : 0;
         } else if (field === 'buyback') {
           updatedManagers[managerIndex][field] = !!value;
-          if (value === true) {
-            // Keep admin UI consistent: show as alive when buyback is active
-            updatedManagers[managerIndex].eliminated = false;
-          }
         } else {
           updatedManagers[managerIndex][field] = value;
         }
-        setManagers(updatedManagers);
-        updateJsonData(updatedManagers);
+        const computedManagers = field === 'buyback' || field === 'carryMargin'
+          ? syncComputedManagerState(updatedManagers)
+          : updatedManagers;
+        setManagers(computedManagers);
+        updateJsonData(computedManagers);
       };
       
       const handleMarginChange = (managerIndex, weekIndex, margin) => {
-        const updatedManagers = [...managers];
+        const updatedManagers = structuredClone(managers);
         updatedManagers[managerIndex].picks[weekIndex] = {
           ...updatedManagers[managerIndex].picks[weekIndex],
           margin: margin,
@@ -538,17 +549,9 @@
           lastUpdated: new Date().toISOString()
         };
         
-        // Recalculate total margin of victory
-        let totalMargin = 0;
-        updatedManagers[managerIndex].picks.forEach(pick => {
-          if (pick.result === 'W' && pick.margin) {
-            totalMargin += pick.margin;
-          }
-        });
-        updatedManagers[managerIndex].marginOfVictory = totalMargin;
-        
-        setManagers(updatedManagers);
-        updateJsonData(updatedManagers);
+        const computedManagers = syncComputedManagerState(updatedManagers);
+        setManagers(computedManagers);
+        updateJsonData(computedManagers);
       };
       
       const updateJsonData = (updatedManagers) => {
@@ -580,6 +583,11 @@
               '1': fallbackOrder,
               '2': fallbackOrder,
               '3': fallbackOrder
+            },
+            orderModes: {
+              '1': 'manual',
+              '2': 'standings',
+              '3': 'standings'
             },
             deadlines: {},
             ...(completeData.pickQueue || {}),
@@ -705,9 +713,10 @@
       };
       
       const resetElimination = (managerIndex) => {
-        const updatedManagers = [...managers];
+        const updatedManagers = structuredClone(managers);
         updatedManagers[managerIndex].eliminated = false;
         updatedManagers[managerIndex].marginOfVictory = 0;
+        updatedManagers[managerIndex].eliminationWeek = null;
         
         // Reset all results
         updatedManagers[managerIndex].picks.forEach(pick => {
@@ -720,7 +729,7 @@
       };
       
       const resetPick = (managerIndex, weekIndex) => {
-        const updatedManagers = [...managers];
+        const updatedManagers = structuredClone(managers);
         updatedManagers[managerIndex].picks[weekIndex] = {
           ...updatedManagers[managerIndex].picks[weekIndex],
           team: '',
@@ -730,21 +739,9 @@
           lastUpdated: new Date().toISOString()
         };
         
-        // Recalculate total margin of victory
-        let totalMargin = 0;
-        updatedManagers[managerIndex].picks.forEach(pick => {
-          if (pick.result === 'W' && pick.margin) {
-            totalMargin += pick.margin;
-          }
-        });
-        updatedManagers[managerIndex].marginOfVictory = totalMargin;
-        
-        // Update elimination status
-        const hasLoss = updatedManagers[managerIndex].picks.some(p => p.result === 'L');
-        updatedManagers[managerIndex].eliminated = hasLoss;
-        
-        setManagers(updatedManagers);
-        updateJsonData(updatedManagers);
+        const computedManagers = syncComputedManagerState(updatedManagers);
+        setManagers(computedManagers);
+        updateJsonData(computedManagers);
         showNotification('Weekly pick reset successfully', 'success');
       };
       
@@ -851,11 +848,21 @@
           '2': fallbackQueueOrder,
           '3': fallbackQueueOrder
         },
+        orderModes: {
+          '1': 'manual',
+          '2': 'standings',
+          '3': 'standings'
+        },
         deadlines: {},
         ...(completeData.pickQueue || {})
       };
       const activeQueueDeadline = pickQueueConfig.deadlines && pickQueueConfig.deadlines[String(pickQueueConfig.activeWeek)];
-      const activeQueueOrder = (pickQueueConfig.orders && pickQueueConfig.orders[String(pickQueueConfig.activeWeek)]) || pickQueueConfig.order || fallbackQueueOrder;
+      const activeQueueMode = (pickQueueConfig.orderModes && pickQueueConfig.orderModes[String(pickQueueConfig.activeWeek)]) || 'manual';
+      const automaticQueueOrder = SurvivorRanking.orderForPickWeek(managers, pickQueueConfig.activeWeek, { totalWeeks: 3 })
+        .map((manager) => manager.name);
+      const activeQueueOrder = activeQueueMode === 'standings'
+        ? automaticQueueOrder
+        : ((pickQueueConfig.orders && pickQueueConfig.orders[String(pickQueueConfig.activeWeek)]) || pickQueueConfig.order || fallbackQueueOrder);
       
       return (
         <div className="min-h-screen p-4">
@@ -1015,18 +1022,25 @@
               </div>
               <div className="mt-5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
-                  <span className="text-sm font-semibold">Week {pickQueueConfig.activeWeek} turn order</span>
-                  <button
-                    onClick={() => updatePickQueue({
-                      orders: {
-                        ...(pickQueueConfig.orders || {}),
-                        [String(pickQueueConfig.activeWeek)]: fallbackQueueOrder
-                      }
-                    })}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm"
-                  >
-                    Use tiebreak order for Week {pickQueueConfig.activeWeek}
-                  </button>
+                  <div>
+                    <span className="text-sm font-semibold">Week {pickQueueConfig.activeWeek} turn order</span>
+                    <span className={`ml-2 px-2 py-1 rounded-full text-xs ${activeQueueMode === 'standings' ? 'bg-emerald-600/60' : 'bg-indigo-600/60'}`}>
+                      {activeQueueMode === 'standings' ? 'Automatic from prior-week standings' : 'Fixed manual order'}
+                    </span>
+                  </div>
+                  {activeQueueMode !== 'standings' && (
+                    <button
+                      onClick={() => updatePickQueue({
+                        orders: {
+                          ...(pickQueueConfig.orders || {}),
+                          [String(pickQueueConfig.activeWeek)]: fallbackQueueOrder
+                        }
+                      })}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm"
+                    >
+                      Use last-year finish for Week {pickQueueConfig.activeWeek}
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {activeQueueOrder.map((name, index) => (
@@ -1036,7 +1050,7 @@
                   ))}
                 </div>
               </div>
-              <p className="text-xs text-purple-300 mt-4">Save to Gist after changing these controls. Closing the queue takes effect as soon as the Gist save completes.</p>
+              <p className="text-xs text-purple-300 mt-4">Week 1 stays fixed to the supplied order. Weeks 2–3 automatically rank eligible survivors from completed prior weeks. Save to Gist after changing these controls.</p>
             </section>
             
             {/* Manager Cards */}
