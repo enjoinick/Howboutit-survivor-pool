@@ -9,7 +9,7 @@ Single-page React app (vanilla React via `<script>` in `index.html`) hosted on G
 ## 2026 Season
 
 - The active pool covers official preseason Weeks 1-3, August 13-29, 2026. The standalone Hall of Fame Game is excluded.
-- `data.json` is reset for the ten returning managers. Their `lastYearRank` values are the final 2025 pool order and serve as the last tiebreaker.
+- `data.json` contains the ten 2026 managers. Their unique `lastYearRank` values (1 is best) are the agreed 2025 tiebreak order.
 - The final 2025 Gist snapshot is preserved in `data-2025.json`.
 - Active data must contain `"season": 2026`. Until the configured Gist is updated for 2026, both pages ignore its 2025 data and safely use the repository's starter `data.json`.
 - After deployment, open `admin.html` and use **Save to Gist** once to initialize the Gist for 2026. Gist revision history preserves the prior version as an additional backup.
@@ -26,8 +26,9 @@ Single-page React app (vanilla React via `<script>` in `index.html`) hosted on G
 ## Data and Persistence
 
 - Public reads use the configured GitHub Gist only when it matches the active season; otherwise they fall back to `data.json`.
-- Admin writes require a Gist token stored in the browser. This client-side setup is acceptable for this private league tool but should not be treated as secure.
-- Optional public auto-persist includes the season, managers, game results, and update timestamp. It remains disabled until the Gist already contains 2026 data.
+- The public site is strictly read-only. It never stores a GitHub token and cannot write to the Gist.
+- Admin writes require a short-lived Gist-only token. The token is kept only in the open admin tab, is never written to `localStorage`, and is cleared after a successful save.
+- The admin validates unique manager names, unique tiebreak ranks from 1 through the manager count, and duplicate team picks before saving.
 - Fantasy ADP is configured for 2026 in `config.json`.
 
 ## Local Development
@@ -39,10 +40,11 @@ Single-page React app (vanilla React via `<script>` in `index.html`) hosted on G
 
 Browser state:
 
-- `localStorage.gistId` and `localStorage.gistToken` configure Gist saves.
-- `localStorage.autoPersistEnabled` toggles automatic live-result saves.
+- `localStorage.gistId` stores the non-secret Gist identifier.
 - `localStorage.mutedAudio` persists the global mute setting.
 - The default admin password for a new browser is `survivor2026`; change it after first login.
+
+The admin password is a local convenience lock, not server-side authentication. The GitHub token is the write credential and should be narrowly scoped, short-lived, and revoked after the pool ends.
 
 ## Notes
 
