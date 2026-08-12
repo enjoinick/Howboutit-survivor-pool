@@ -531,14 +531,11 @@
 
       // Measure after the populated ticker has been laid out, including on the first render.
       React.useLayoutEffect(() => {
-        let secondFrame = null;
-        const firstFrame = requestAnimationFrame(() => {
-          secondFrame = requestAnimationFrame(recomputeTicker);
-        });
-        return () => {
-          cancelAnimationFrame(firstFrame);
-          if (secondFrame !== null) cancelAnimationFrame(secondFrame);
-        };
+        recomputeTicker();
+        // Recheck once after paint/font fallback without relying on requestAnimationFrame,
+        // which browsers may defer for a newly opened background tab.
+        const timer = setTimeout(recomputeTicker, 100);
+        return () => clearTimeout(timer);
       }, [streamJokes, recomputeTicker]);
       useEffect(() => {
         const onResize = () => recomputeTicker();
