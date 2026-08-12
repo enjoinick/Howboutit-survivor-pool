@@ -1,7 +1,7 @@
 {
-  "name": "NFL Preseason Survivor Pool",
-  "short_name": "Survivor Pool",
-  "description": "Track your league's preseason picks, wins, margins and draft order.",
+  "name": "2026 NFL Preseason Survivor Pool",
+  "short_name": "2026 Survivor Pool",
+  "description": "Track your league's 2026 preseason picks, wins, margins and draft order.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#1f1147",

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Panel - NFL Survivor Pool</title>
+  <title>2026 Admin Panel - NFL Survivor Pool</title>
   <!-- Tailwind CSS via Play CDN for rapid styling -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React and ReactDOM -->
@@ -14,7 +14,7 @@
   <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Ajv for JSON Schema validation -->
-  <script src="https://cdn.jsdelivr.net/npm/ajv@8/dist/ajv.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ajv/8.17.1/ajv7.bundle.min.js"></script>
   <!-- diff for computing text diffs (line-by-line) -->
   <script src="https://cdn.jsdelivr.net/npm/diff@5/dist/diff.min.js"></script>
   <style>
@@ -88,6 +88,8 @@
 
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
+    const SEASON_YEAR = 2026;
+    const isCurrentSeasonData = (data) => Number(data && data.season) === SEASON_YEAR;
     
     // Complete list of NFL teams
     const nflTeams = [
@@ -161,9 +163,10 @@
       // Lightweight JSON Schema for admin validation (kept permissive to avoid blocking legitimate data)
       const jsonSchema = {
         type: 'object',
-        required: ['managers'],
+        required: ['season', 'managers'],
         additionalProperties: true,
         properties: {
+          season: { type: 'integer', const: SEASON_YEAR },
           managers: {
             type: 'array',
             items: {
@@ -203,17 +206,18 @@
 
       const getDataToSave = () => ({
         ...completeData,
+        season: SEASON_YEAR,
         managers: managers,
         lastUpdated: new Date().toISOString()
       });
 
       const validateAgainstSchema = (data) => {
-        if (!window.Ajv) {
+        if (!window.ajv7) {
           console.warn('Ajv not loaded; skipping validation');
           return { valid: true, errors: [] };
         }
         try {
-          const ajv = new Ajv({ allErrors: true, strict: false });
+          const ajv = new window.ajv7({ allErrors: true, strict: false });
           const validate = ajv.compile(jsonSchema);
           const valid = validate(data);
           return { valid: !!valid, errors: validate.errors || [] };
@@ -256,7 +260,7 @@
       };
       
       const handleLogin = () => {
-        const storedPassword = localStorage.getItem('adminPassword') || 'survivor2025';
+        const storedPassword = localStorage.getItem('adminPassword') || 'survivor2026';
         if (password === storedPassword) {
           setAuthenticated(true);
           localStorage.setItem('adminAuthenticated', 'true');
@@ -291,6 +295,7 @@
       };
       
       const loadData = async () => {
+        let ignoredPriorSeasonGist = false;
         // Try Gist first if configured; otherwise fall back to local data.json
         if (gistId) {
           try {
@@ -302,6 +307,12 @@
             const res = await fetch(`${dataFile.raw_url}?t=${Date.now()}`);
             if (!res.ok) throw new Error(`Gist raw fetch failed: ${res.status}`);
             const data = await res.json();
+            if (!isCurrentSeasonData(data)) {
+              ignoredPriorSeasonGist = true;
+              const mismatchError = new Error(`Ignoring non-${SEASON_YEAR} Gist data`);
+              mismatchError.code = 'season_mismatch';
+              throw mismatchError;
+            }
             setManagers(data.managers || []);
             setCompleteData(data);
             setJsonData(JSON.stringify(data, null, 2));
@@ -309,17 +320,27 @@
             setDirty(false);
             return;
           } catch (err) {
-            console.error('Gist load failed, falling back to local data.json:', err);
+            if (err && err.code === 'season_mismatch') {
+              console.info(`[Data] ${SEASON_YEAR} starter data loaded; prior-season Gist left untouched.`);
+            } else {
+              console.error('Gist load failed, falling back to local data.json:', err);
+            }
           }
         }
         try {
           const res = await fetch(`data.json?t=${Date.now()}`);
           const data = await res.json();
+          if (!isCurrentSeasonData(data)) {
+            throw new Error(`Local data.json is not configured for ${SEASON_YEAR}`);
+          }
           setManagers(data.managers || []);
           setCompleteData(data);
           setJsonData(JSON.stringify(data, null, 2));
           setBaselineJson(JSON.stringify(data, null, 2));
           setDirty(false);
+          if (ignoredPriorSeasonGist) {
+            showNotification(`Loaded ${SEASON_YEAR} starter data; last season's Gist was left untouched`, 'success');
+          }
         } catch (error) {
           console.error('Error loading local data.json:', error);
           showNotification('Error loading data', 'error');
@@ -410,6 +431,7 @@
       const updateJsonData = (updatedManagers) => {
         const data = {
           ...completeData,  // Preserve existing data like gameResults
+          season: SEASON_YEAR,
           managers: updatedManagers,
           lastUpdated: new Date().toISOString()
         };
@@ -443,6 +465,9 @@
           const data = JSON.parse(text);
           if (!data || typeof data !== 'object' || !Array.isArray(data.managers)) {
             throw new Error('Invalid JSON format: expected { managers: [...] }');
+          }
+          if (!isCurrentSeasonData(data)) {
+            throw new Error(`Import must contain season: ${SEASON_YEAR}`);
           }
           // Preserve entire structure (e.g., gameResults) and reflect it in state
           const importedManagers = Array.isArray(data.managers) ? data.managers : [];
@@ -649,7 +674,7 @@
               </div>
               
               <div className="mt-6 text-center text-sm text-purple-300">
-                <p>Default password: <span className="font-mono">survivor2025</span></p>
+                <p>Default password: <span className="font-mono">survivor2026</span></p>
                 <p className="mt-2">Change this after first login for security</p>
               </div>
             </div>
@@ -666,9 +691,9 @@
                 <div>
                   <h1 className="text-3xl font-bold flex items-center gap-3">
                     <i className="fas fa-user-shield"></i>
-                    Admin Panel
+                    {SEASON_YEAR} Admin Panel
                   </h1>
-                  <p className="text-purple-200 mt-1">Manage your NFL Survivor Pool</p>
+                  <p className="text-purple-200 mt-1">Manage your {SEASON_YEAR} NFL Survivor Pool</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <button

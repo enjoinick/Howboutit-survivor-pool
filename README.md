@@ -1,37 +1,51 @@
 # Howboutit-survivor-pool
-NFL Preseason Survivor Pool Tracker
+
+2026 NFL Preseason Survivor Pool Tracker
 
 ## Overview
-Single-page React app (vanilla React via `<script>` in `index.html`) hosted on GitHub Pages. Tracks a preseason NFL survivor pool with live scores, draft-order logic, manager cards, and an admin panel (`admin.html`) for data edits (persisted to a GitHub Gist).
 
-## Performance & UX Enhancements (2025 Q3)
+Single-page React app (vanilla React via `<script>` in `index.html`) hosted on GitHub Pages. It tracks preseason picks, live scores, cumulative margins, eliminations, and fantasy draft order. The companion `admin.html` page manages picks and can persist them to a GitHub Gist.
 
-• **Manual Refresh Throttling**
-  - The toolbar and stale banner refresh buttons are throttled to 15 seconds.
-  - When on cooldown, the button is disabled and shows a countdown in the tooltip/label.
+## 2026 Season
 
-• **Memoized Derived Computations**
-  - Draft ordering and elimination ranking are memoized via `useMemo` and reused across the UI.
-  - The Stats Overview counts use `orderedManagers` (which includes `eliminationWeek`) to avoid recomputation.
+- The active pool covers official preseason Weeks 1-3, August 13-29, 2026. The standalone Hall of Fame Game is excluded.
+- `data.json` is reset for the ten returning managers. Their `lastYearRank` values are the final 2025 pool order and serve as the last tiebreaker.
+- The final 2025 Gist snapshot is preserved in `data-2025.json`.
+- Active data must contain `"season": 2026`. Until the configured Gist is updated for 2026, both pages ignore its 2025 data and safely use the repository's starter `data.json`.
+- After deployment, open `admin.html` and use **Save to Gist** once to initialize the Gist for 2026. Gist revision history preserves the prior version as an additional backup.
 
-• **Audio Lazy-Load + Global Mute**
-  - Easter egg audio assets now load lazily (`preload="none"`).
-  - A global mute toggle in the toolbar controls all easter-eggs and persists to `localStorage`.
-  - Local storage key: `mutedAudio` = `"true" | "false"`.
+## Current Features
 
-## Data & Persistence
-• Public reads from this repo’s `data.json` or a configured GitHub Gist.
-• Admin writes from `admin.html` to the configured Gist (token stored client-side; low security acceptable for this project).
-• Live NFL scores via ESPN public scoreboard API.
+- Manual refresh is throttled to 15 seconds.
+- Draft ordering and elimination calculations are memoized.
+- ESPN preseason scores refresh every two minutes with retry/backoff.
+- Picks lock at their explicit Eastern Time kickoff.
+- Audio assets lazy-load and a global mute preference persists in `localStorage`.
+- The admin validates data and previews changes before saving to the Gist.
+
+## Data and Persistence
+
+- Public reads use the configured GitHub Gist only when it matches the active season; otherwise they fall back to `data.json`.
+- Admin writes require a Gist token stored in the browser. This client-side setup is acceptable for this private league tool but should not be treated as secure.
+- Optional public auto-persist includes the season, managers, game results, and update timestamp. It remains disabled until the Gist already contains 2026 data.
+- Fantasy ADP is configured for 2026 in `config.json`.
 
 ## Local Development
-1) Open `index.html` in a local server (or use GitHub Pages). No build step required.
-2) Optional: open `admin.html` to edit managers/results and save to your Gist.
-3) Environment/state
-   - `localStorage.gistId` and `localStorage.gistToken` for admin saves.
-   - `localStorage.autoPersistEnabled` toggles auto-save of live state.
-   - `localStorage.mutedAudio` persists the global mute toggle.
+
+1. Start a local web server in the repository (for example, `python -m http.server 8000`).
+2. Open `http://localhost:8000/` for the public site.
+3. Open `http://localhost:8000/admin.html` for administration.
+4. There is no build step.
+
+Browser state:
+
+- `localStorage.gistId` and `localStorage.gistToken` configure Gist saves.
+- `localStorage.autoPersistEnabled` toggles automatic live-result saves.
+- `localStorage.mutedAudio` persists the global mute setting.
+- The default admin password for a new browser is `survivor2026`; change it after first login.
 
 ## Notes
-• The per-manager margins table includes a Running Total that sums decided games (W/L); ties contribute 0 and are displayed as 0.
-• Times shown are Eastern Time; kickoff lock indicators are derived from live state where possible, with ET as fallback.
+
+- Times are displayed in Eastern Time.
+- Ties contribute zero and do not eliminate a manager.
+- Draft order is based on survival, cumulative margin, active/elimination-week margin, then the prior year's finish.
