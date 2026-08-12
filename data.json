@@ -4,7 +4,7 @@
     {
       "name": "Kevin",
       "teamLabel": "Check My Balls",
-      "lastYearRank": 1,
+      "lastYearRank": 7,
       "picks": [
         {
           "week": 1,
@@ -50,9 +50,9 @@
       "marginOfVictory": 0
     },
     {
-      "name": "Will",
-      "teamLabel": "Just Win Baby",
-      "lastYearRank": 3,
+      "name": "Michael",
+      "teamLabel": "The Sacks Kingdom",
+      "lastYearRank": 8,
       "picks": [
         {
           "week": 1,
@@ -76,7 +76,7 @@
     {
       "name": "Ryan",
       "teamLabel": "Quail Man SWAG",
-      "lastYearRank": 4,
+      "lastYearRank": 9,
       "picks": [
         {
           "week": 1,
@@ -100,7 +100,7 @@
     {
       "name": "Nick",
       "teamLabel": "Allen's Dirty Brown Kupp",
-      "lastYearRank": 5,
+      "lastYearRank": 10,
       "picks": [
         {
           "week": 1,
@@ -124,7 +124,7 @@
     {
       "name": "Chris",
       "teamLabel": "Hello Naber!",
-      "lastYearRank": 6,
+      "lastYearRank": 4,
       "picks": [
         {
           "week": 1,
@@ -148,7 +148,7 @@
     {
       "name": "Josh",
       "teamLabel": "S K",
-      "lastYearRank": 7,
+      "lastYearRank": 3,
       "picks": [
         {
           "week": 1,
@@ -172,7 +172,7 @@
     {
       "name": "Weston",
       "teamLabel": "Robert DUUUVAL",
-      "lastYearRank": 8,
+      "lastYearRank": 1,
       "picks": [
         {
           "week": 1,
@@ -196,7 +196,7 @@
     {
       "name": "Matt",
       "teamLabel": "DELTA 8",
-      "lastYearRank": 9,
+      "lastYearRank": 6,
       "picks": [
         {
           "week": 1,
@@ -220,7 +220,7 @@
     {
       "name": "Austin",
       "teamLabel": "Honey Baked Lamb",
-      "lastYearRank": 10,
+      "lastYearRank": 5,
       "picks": [
         {
           "week": 1,
@@ -247,5 +247,5 @@
     "week2": [],
     "week3": []
   },
-  "lastUpdated": "2026-08-10T00:00:00.000Z"
+  "lastUpdated": "2026-08-12T19:13:54.228Z"
 }
