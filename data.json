@@ -53,6 +53,11 @@
         "Nick"
       ]
     },
+    "orderModes": {
+      "1": "manual",
+      "2": "standings",
+      "3": "standings"
+    },
     "deadlines": {
       "1": "2026-08-13T19:00:00-04:00",
       "2": "2026-08-20T20:00:00-04:00",
@@ -64,7 +69,7 @@
     {
       "name": "Kevin",
       "teamLabel": "Check My Balls",
-      "lastYearRank": 7,
+      "lastYearRank": 4,
       "picks": [
         {
           "week": 1,
@@ -87,8 +92,8 @@
     },
     {
       "name": "Jordan",
-      "teamLabel": "GRAVEDIGGER",
-      "lastYearRank": 2,
+      "teamLabel": "Jordan's Scary Team",
+      "lastYearRank": 9,
       "picks": [
         {
           "week": 1,
@@ -112,7 +117,7 @@
     {
       "name": "Michael",
       "teamLabel": "Nut Sacks",
-      "lastYearRank": 8,
+      "lastYearRank": 3,
       "picks": [
         {
           "week": 1,
@@ -135,8 +140,8 @@
     },
     {
       "name": "Ryan",
-      "teamLabel": "Quail Man SWAG",
-      "lastYearRank": 9,
+      "teamLabel": "RIP Doug Martin",
+      "lastYearRank": 2,
       "picks": [
         {
           "week": 1,
@@ -159,8 +164,8 @@
     },
     {
       "name": "Nick",
-      "teamLabel": "Allen's Dirty Brown Kupp",
-      "lastYearRank": 10,
+      "teamLabel": "Bake Her Lamb Raw",
+      "lastYearRank": 1,
       "picks": [
         {
           "week": 1,
@@ -183,8 +188,8 @@
     },
     {
       "name": "Chris",
-      "teamLabel": "Hello Naber!",
-      "lastYearRank": 4,
+      "teamLabel": "Gibbs Me That W 🖕🏻",
+      "lastYearRank": 7,
       "picks": [
         {
           "week": 1,
@@ -208,7 +213,7 @@
     {
       "name": "Josh",
       "teamLabel": "S K",
-      "lastYearRank": 3,
+      "lastYearRank": 8,
       "picks": [
         {
           "week": 1,
@@ -232,7 +237,7 @@
     {
       "name": "Weston",
       "teamLabel": "Robert DUUUVAL",
-      "lastYearRank": 1,
+      "lastYearRank": 10,
       "picks": [
         {
           "week": 1,
@@ -256,7 +261,7 @@
     {
       "name": "Matt",
       "teamLabel": "DELTA 8",
-      "lastYearRank": 6,
+      "lastYearRank": 5,
       "picks": [
         {
           "week": 1,
@@ -279,8 +284,8 @@
     },
     {
       "name": "Austin",
-      "teamLabel": "Honey Baked Lamb",
-      "lastYearRank": 5,
+      "teamLabel": "The Giants Graveyard",
+      "lastYearRank": 6,
       "picks": [
         {
           "week": 1,
@@ -307,5 +312,5 @@
     "week2": [],
     "week3": []
   },
-  "lastUpdated": "2026-08-12T19:13:54.228Z"
+  "lastUpdated": "2026-08-12T21:07:15.813Z"
 }

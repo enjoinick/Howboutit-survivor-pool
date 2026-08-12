@@ -1,3 +1,5 @@
+import SurvivorRanking from '../../ranking.js';
+
 export const NFL_TEAMS = Object.freeze([
   'Arizona Cardinals', 'Atlanta Falcons', 'Baltimore Ravens', 'Buffalo Bills',
   'Carolina Panthers', 'Chicago Bears', 'Cincinnati Bengals', 'Cleveland Browns',
@@ -31,9 +33,10 @@ const normalizeOrder = (data, week) => {
   const managersByKey = new Map(managers.map((manager) => [managerKey(manager.name), manager]));
   const queue = data && data.pickQueue || {};
   const weekOrder = queue.orders && queue.orders[String(week)];
-  const configured = Array.isArray(weekOrder)
-    ? weekOrder
-    : (Array.isArray(queue.order) ? queue.order : []);
+  const orderMode = queue.orderModes && queue.orderModes[String(week)];
+  const configured = orderMode === 'standings' && Number(week) > 1
+    ? SurvivorRanking.orderForPickWeek(managers, week, { totalWeeks: 3 }).map((manager) => manager.name)
+    : (Array.isArray(weekOrder) ? weekOrder : (Array.isArray(queue.order) ? queue.order : []));
   const ordered = [];
   const seen = new Set();
 
@@ -78,7 +81,16 @@ export const deriveQueueState = (data, now = new Date()) => {
   const deadlineTimestamp = deadline ? Date.parse(deadline) : null;
   const locked = Boolean(deadlineTimestamp && Number.isFinite(nowTimestamp) && nowTimestamp >= deadlineTimestamp);
   const orderedManagers = normalizeOrder(data, activeWeek);
-  const eligibleManagers = orderedManagers.filter((manager) => !(manager.eliminated === true && manager.buyback !== true));
+  const priorWeek = Math.max(0, activeWeek - 1);
+  const eligibleManagers = orderedManagers.filter((manager) => {
+    const standing = SurvivorRanking.analyzeManager(manager, {
+      totalWeeks: 3,
+      throughWeek: priorWeek,
+      activeWeek: Math.max(1, priorWeek)
+    });
+    const manualElimination = manager.eliminated === true && manager.buyback !== true;
+    return !manualElimination && !standing.isEliminated;
+  });
   const firstWaitingIndex = eligibleManagers.findIndex((manager) => {
     const pick = findWeekPick(manager, activeWeek);
     return !String(pick && pick.team || '').trim();
@@ -117,7 +129,7 @@ export const deriveQueueState = (data, now = new Date()) => {
     activeWeek,
     deadline,
     locked,
-    complete: eligibleManagers.length > 0 && !currentManager,
+    complete: !currentManager,
     currentManager: currentManager ? {
       name: currentManager.name,
       teamLabel: currentManager.teamLabel || '',

@@ -44,6 +44,19 @@ test('the active week selects its own configured order', () => {
   assert.equal(state.entries.at(-1).name, 'Weston');
 });
 
+test('future weeks automatically use prior-week standings and skip eliminated managers', () => {
+  const data = buildData();
+  data.pickQueue.activeWeek = 2;
+  data.pickQueue.orderModes = { '1': 'manual', '2': 'standings', '3': 'standings' };
+  data.managers.find((manager) => manager.name === 'Weston').picks[0] = { week: 1, team: 'Team A', result: 'W', margin: 2 };
+  data.managers.find((manager) => manager.name === 'Jordan').picks[0] = { week: 1, team: 'Team B', result: 'W', margin: 10 };
+  data.managers.find((manager) => manager.name === 'Josh').picks[0] = { week: 1, team: 'Team C', result: 'L', margin: -1 };
+  const state = deriveQueueState(data, beforeDeadline);
+  assert.equal(state.currentManager.name, 'Jordan');
+  assert.equal(state.entries[0].name, 'Jordan');
+  assert.equal(state.entries.find((entry) => entry.name === 'Josh').status, 'ineligible');
+});
+
 test('an accepted pick advances exactly one turn', () => {
   const result = applySubmission(buildData(), {
     manager: 'Weston',
@@ -99,4 +112,18 @@ test('the queue reports completion after all eligible picks', () => {
   const state = deriveQueueState(data, beforeDeadline);
   assert.equal(state.complete, true);
   assert.equal(state.currentManager, null);
+});
+
+test('the queue reports completion when no managers remain eligible', () => {
+  const data = buildData();
+  data.pickQueue.activeWeek = 2;
+  data.pickQueue.orderModes = { '1': 'manual', '2': 'standings', '3': 'standings' };
+  data.managers.forEach((manager) => {
+    manager.picks[0] = { week: 1, team: 'Team A', result: 'L', margin: -1 };
+    manager.eliminated = true;
+  });
+  const state = deriveQueueState(data, beforeDeadline);
+  assert.equal(state.complete, true);
+  assert.equal(state.currentManager, null);
+  assert.equal(state.entries.every((entry) => entry.status === 'ineligible'), true);
 });

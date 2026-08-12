@@ -18,6 +18,7 @@
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
   <!-- Chart.js for rendering bar charts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
+  <script src="ranking.js"></script>
   <!-- Babel Standalone enables JSX in the browser -->
   <script src="https://unpkg.com/@babel/standalone@7.28.5/babel.min.js" integrity="sha384-mP9sW+eK08VvAmlxEkn9Kn6egvKFtnFEfW7/u9feUWAIoTvnYAzT4NwsskP+uWUd" crossorigin="anonymous"></script>
   <!-- Font Awesome for icons -->
@@ -227,7 +228,7 @@
       const initViewApplied = useRef(false);
       const [openWeeks, setOpenWeeks] = useState(new Set()); // mobile: which schedule weeks are expanded
       const joshAudioRef = useRef(null); // easter egg audio ref
-      const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan (GRAVEDIGGER)
+      const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan
       const westonAudioRef = useRef(null); // easter egg audio ref for Weston (DUUUVALL)
       const ryanAudioRef = useRef(null); // easter egg audio ref for Ryan (Opposite of Adults rmx)
       // Global audio mute toggle (persisted)
@@ -482,16 +483,16 @@
       const tickerTrackRef = useRef(null);
       const [tickerDuration, setTickerDuration] = useState(20); // seconds
       const jokes = useMemo(() => [
-        "Kevin (Check My Balls) — Kevin named the team Check My Balls, which is a lot of confidence for a roster with no visible toughness. Every Sunday he opens the injury report like WebMD: already convinced something is swollen and somehow blaming the commissioner.",
-        "Jordan (GRAVEDIGGER) — GRAVEDIGGER sounds terrifying until you realize the graves are for players Jordan drafted two rounds early. He doesn’t bury opponents; he holds a tasteful little service for his projections every Monday.",
-        "Michael (Nut Sacks) — Michael replaced Will, renamed the team Nut Sacks, and somehow made the league’s injury report sound like a medical emergency at a gas station.",
-        "Ryan (Quail Man SWAG) — Quail Man SWAG is the only team name wearing tighty-whities over khakis. Ryan’s draft strategy is pure Nickelodeon: loud colors, no adult supervision, cancelled before the playoffs.",
-        "Nick (Allen’s Dirty Brown Kupp) — Nick’s team name sounds less like fantasy football and more like evidence being sealed in a plastic bag. Even autocorrect looked at it and said, ‘Nope, I’m not getting subpoenaed.’",
-        "Chris (Hello Naber!) — Hello Naber! has the energy of a dad learning one rookie’s name and yelling it across Costco. Chris says ‘sleeper’ like he discovered fire, then drafts the guy everybody ranked 14th.",
-        "Josh (S K) — Josh enters as S K: two mysterious initials and zero available explanations. It’s like a government agency, except the intelligence failure happens in Round 1.",
-        "Weston (Robert DUUUVAL) — Robert DUUUVAL is ten percent wordplay and ninety percent Jacksonville mating call. Say DUUUVAL three times and a man in jorts appears to explain why this is finally the Jaguars’ year.",
-        "Matt (DELTA 8) — Matt calls the team DELTA 8 because REGULAR CONFIDENCE was already taken. By pick five he’s staring at the draft board like it just asked him to operate heavy machinery.",
-        "Austin (Honey Baked Lamb) — Honey Baked Lamb sounds like Easter dinner made by a man who lost the recipe and blamed the oven. Austin’s roster is the same: smells promising, looks expensive, and somebody’s apologizing by halftime."
+        "Nick (Bake Her Lamb Raw) — Nick named the team like a cooking instruction whispered during a health-code violation. The roster will be served rare, overpriced, and somehow still blamed on the commissioner.",
+        "Ryan (RIP Doug Martin) — Ryan built a memorial team for Doug Martin, which is touching until you realize his draft strategy also died around 2017. Respectful service, terrible waiver priority.",
+        "Michael (Nut Sacks) — Michael replaced Will and immediately named the team Nut Sacks. That is less of a franchise identity and more of a phrase an urgent-care nurse makes you repeat quietly.",
+        "Kevin (Check My Balls) — Kevin turned a routine fantasy matchup into the sentence every doctor dreads hearing at a backyard barbecue. His roster gets examined weekly and the prognosis remains ‘questionable.’",
+        "Matt (DELTA 8) — Matt named the team DELTA 8 because making draft decisions completely sober felt too predictable. By Round 6, the queue is moving and he is reading the snack label like a contract.",
+        "Austin (The Giants Graveyard) — Austin’s Giants Graveyard has plenty of room, mostly because New York keeps delivering fresh material. The headstones are just old depth charts with the names crossed out.",
+        "Chris (Gibbs Me That W 🖕🏻) — Chris added the finger emoji so nobody would mistake this for a polite request. It is a bold demand from a roster that still needs Jahmyr Gibbs to do the group project alone.",
+        "Josh (S K) — Josh kept S K short because the full explanation would take longer than his playoff run. Two letters, ten roster spots, and somehow still no vowels or contingency plan.",
+        "Jordan (Jordan’s Scary Team) — Jordan called it Jordan’s Scary Team, the fantasy equivalent of a haunted house with the lights on. The real jump scare arrives when the projections update Sunday morning.",
+        "Weston (Robert DUUUVAL) — Weston’s team remains one celebrity pun away from a Jacksonville zoning dispute. Shout DUUUVAL three times and a man in jorts appears to defend a nine-win ceiling."
       ], []);
       // Build continuous stream (initially in given order); click will reshuffle
       const [streamJokes, setStreamJokes] = useState([]);
@@ -1033,199 +1034,55 @@
       /**
        * Calculate elimination week and draft order
        */
-      // Helper to derive elimination and week even if picks weren't persisted yet
+      const getManagerStanding = (mgr, overrides = {}) => {
+        const totalWeeks = preseasonSchedule.length || 3;
+        const { activeWeek } = computeCalendarState(preseasonSchedule);
+        return SurvivorRanking.analyzeManager(mgr, {
+          totalWeeks,
+          throughWeek: totalWeeks,
+          activeWeek,
+          outcomeForPick: (pick) => pick && pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null,
+          ...overrides
+        });
+      };
+
       const deriveElimination = (mgr) => {
-        // Buyback override: allow manager to continue despite a recorded loss
-        if (mgr && mgr.buyback === true) {
-          return { isEliminated: false, week: null };
-        }
-        // Prefer LIVE outcomes: if any completed game is a non-tie loss for the picked team, eliminated.
-        for (const p of (mgr.picks || [])) {
-          if (!p.team) continue;
-          const outcome = getTeamOutcomeForWeek(p.team, p.week);
-          if (outcome && outcome.state === 'post' && !outcome.isWinner && !outcome.isTie) {
-            return { isEliminated: true, week: p.week };
-          }
-        }
-        // Fallback to stored explicit losses only if no live completed outcome available
-        const lossPick = (mgr.picks || []).find(p => p.result === 'L');
-        if (lossPick) return { isEliminated: true, week: lossPick.week };
-        return { isEliminated: false, week: null };
+        const standing = getManagerStanding(mgr);
+        return { isEliminated: standing.isEliminated, week: standing.eliminationWeek };
       };
 
-      // Margin for a specific week. Prefer LIVE final score margin when available,
-      // otherwise fall back to stored pick.margin. Positive when the picked team leads.
       const getWeekMargin = (mgr, week) => {
-        // Buyback carry margin: use fixed margin if provided (e.g., -7)
-        if (mgr && mgr.buyback === true && typeof mgr.carryMargin === 'number') {
-          return mgr.carryMargin;
-        }
-        const wk = Number(week);
-        if (!wk) return 0;
-        const pick = (mgr.picks || []).find(p => Number(p.week) === wk);
-        if (!pick) return 0;
-        if (pick.team) {
-          const outcome = getTeamOutcomeForWeek(pick.team, wk);
-          // Use live final margin if the game is completed
-          if (outcome && outcome.state === 'post') {
-            return (outcome.score - outcome.oppScore) || 0;
-          }
-        }
-        // Fallback to stored margin if present (covers manual overrides or persisted results)
-        if (typeof pick.margin === 'number') return pick.margin;
-        return 0;
+        const standing = getManagerStanding(mgr, { activeWeek: Number(week) });
+        const entry = standing.weeks.find((candidate) => candidate.week === Number(week));
+        return entry && entry.final ? entry.margin : 0;
       };
 
-      // Calculate cumulative margin from all winning weeks (live-reactive)
-      const getCumulativeMargin = (mgr) => {
-        if (!mgr || !mgr.picks) return 0;
-        
-        // Start with buyback carry margin if applicable
-        let totalMargin = 0;
-        if (mgr && mgr.buyback === true && typeof mgr.carryMargin === 'number') {
-          totalMargin = mgr.carryMargin;
-        } else if (mgr && mgr.buyback === true) {
-          // For managers who bought back but don't have carryMargin set, check for Cincinnati Bengals loss
-          const bengalsLoss = (mgr.picks || []).find(p => p.team === 'Cincinnati Bengals');
-          if (bengalsLoss) {
-            totalMargin = -7; // Known margin for Cincinnati Bengals loss in Week 1
-          }
-        }
-        
-        const derived = deriveElimination(mgr);
-        
-        // For eliminated managers, include wins up to elimination week
-        // AND include the elimination-week loss margin (negative).
-        if (derived.isEliminated) {
-          const elimWeekNum = Number(derived.week);
-          for (const pick of mgr.picks) {
-            const wk = Number(pick.week);
-            if (!wk || !pick.team) continue;
-            if (wk > elimWeekNum) continue;
+      const getCumulativeMargin = (mgr) => getManagerStanding(mgr).totalMargin;
 
-            const outcome = getTeamOutcomeForWeek(pick.team, wk);
-            let margin = 0;
-            let isWin = false;
-            let isLoss = false;
-
-            if (outcome && outcome.state === 'post') {
-              const diff = (outcome.score - outcome.oppScore) || 0; // perspective = picked team
-              isWin = outcome.isWinner && !outcome.isTie;
-              isLoss = !outcome.isWinner && !outcome.isTie;
-              margin = diff;
-            } else {
-              if (typeof pick.margin === 'number') margin = pick.margin;
-              isWin = pick.result === 'W';
-              isLoss = pick.result === 'L';
-            }
-
-            if (isWin) {
-              totalMargin += Math.max(0, margin);
-            } else if (isLoss && wk === elimWeekNum) {
-              // Add the negative loss margin from the elimination week
-              totalMargin += Math.min(0, margin);
-            }
-          }
-          return totalMargin;
-        }
-        
-        // For active managers, calculate cumulative wins
-        for (const pick of mgr.picks) {
-          const wk = Number(pick.week);
-          if (!wk || !pick.team) continue;
-          
-          // Check if this pick is a win (prefer live final over stored result)
-          const outcome = getTeamOutcomeForWeek(pick.team, wk);
-          let isWin = false;
-          let margin = 0;
-          
-          if (outcome && outcome.state === 'post') {
-            // Use live final result and margin
-            isWin = outcome.isWinner && !outcome.isTie;
-            margin = isWin ? ((outcome.score - outcome.oppScore) || 0) : 0;
-          } else {
-            // Fallback to stored result and margin
-            isWin = pick.result === 'W';
-            margin = (isWin && typeof pick.margin === 'number') ? pick.margin : 0;
-          }
-          
-          if (isWin) {
-            totalMargin += margin;
-          }
-        }
-        return totalMargin;
-      };
-
-      // Build a concise week-by-week margin breakdown matching getCumulativeMargin rules
       const getMarginBreakdown = (mgr) => {
-        if (!mgr || !Array.isArray(mgr.picks)) return 'No data';
-        const derived = deriveElimination(mgr);
-        const elimWeekNum = derived.isEliminated ? Number(derived.week) : null;
-        const picksSorted = mgr.picks.slice().sort((a,b) => (Number(a.week||0) - Number(b.week||0)));
-        let total = 0;
-        const lines = [];
-        for (const pick of picksSorted) {
-          const wk = Number(pick.week);
-          if (!wk || !pick.team) continue;
-          if (elimWeekNum && wk > elimWeekNum) continue;
-          const outcome = getTeamOutcomeForWeek(pick.team, wk);
-          let isTie = false, isWin = false, isLoss = false, diff = 0;
-          if (outcome && outcome.state === 'post') {
-            diff = (outcome.score - outcome.oppScore) || 0;
-            isTie = !!outcome.isTie;
-            isWin = outcome.isWinner && !isTie;
-            isLoss = !outcome.isWinner && !isTie;
-          } else {
-            if (typeof pick.margin === 'number') diff = pick.margin;
-            isWin = pick.result === 'W';
-            isLoss = pick.result === 'L';
-            isTie = pick.result === 'T';
-          }
-          if (derived.isEliminated) {
-            if (isWin) {
-              total += Math.max(0, diff);
-              lines.push(`W${wk} ${pick.team}: +${Math.max(0, diff)}`);
-            } else if (isLoss && wk === elimWeekNum) {
-              total += Math.min(0, diff);
-              lines.push(`W${wk} ${pick.team}: ${Math.min(0, diff)}`);
-            }
-          } else {
-            if (isWin) {
-              total += Math.max(0, diff);
-              lines.push(`W${wk} ${pick.team}: +${Math.max(0, diff)}`);
-            }
-          }
-        }
+        const standing = getManagerStanding(mgr);
+        const lines = standing.weeks
+          .filter((entry) => entry.final && entry.counted && entry.team)
+          .map((entry) => {
+            const marker = entry.buyback ? ' (buyback)' : '';
+            const margin = entry.margin > 0 ? `+${entry.margin}` : entry.margin;
+            return `W${entry.week} ${entry.team}: ${margin}${marker}`;
+          });
         if (lines.length === 0) return 'No completed margins yet';
-        lines.push(`Total: ${total}`);
+        lines.push(`Total: ${standing.totalMargin}`);
         return lines.join('\n');
       };
 
-      // Draft order per provided rules (live-reactive)
+      // Draft order per the published rules. Live finals take precedence over stored results.
       const computeDraftOrderLive = (mgrs) => {
-        const totalWeeks = preseasonSchedule.length || 0;
+        const totalWeeks = preseasonSchedule.length || 3;
         const { activeWeek } = computeCalendarState(preseasonSchedule);
-        const withKeys = mgrs.map(mgr => {
-          const derived = deriveElimination(mgr);
-          const eliminationWeek = derived.isEliminated ? Number(derived.week) : (totalWeeks + 1); // survivors rank highest
-          // For survivors, use the CURRENT active week's margin to rank winners of completed games above others
-          const tieWeek = derived.isEliminated ? Number(derived.week) : Number(activeWeek);
-          const weekMargin = getWeekMargin(mgr, tieWeek);
-          const cumulativeMargin = getCumulativeMargin(mgr);
-          return { ...mgr, eliminationWeek, weekMargin, cumulativeMargin };
+        return SurvivorRanking.rankManagers(mgrs, {
+          totalWeeks,
+          throughWeek: totalWeeks,
+          activeWeek,
+          outcomeForPick: (pick) => pick && pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null
         });
-        return withKeys
-          .sort((a, b) => {
-            // 1) Later elimination week first (survivors have totalWeeks+1)
-            if (a.eliminationWeek !== b.eliminationWeek) return b.eliminationWeek - a.eliminationWeek;
-            // 2) Larger cumulative margin higher (primary tiebreaker)
-            if (a.cumulativeMargin !== b.cumulativeMargin) return b.cumulativeMargin - a.cumulativeMargin;
-            // 3) Larger week margin higher (secondary tiebreaker for current week performance)
-            if (a.weekMargin !== b.weekMargin) return b.weekMargin - a.weekMargin;
-            // 4) Better last year rank (smaller number is better)
-            return a.lastYearRank - b.lastYearRank;
-          })
-          .map((mgr, idx) => ({ ...mgr, draftOrder: idx + 1 }));
       };
 
       const orderedManagers = useMemo(() => computeDraftOrderLive(managers), [managers, games, preseasonSchedule]);
@@ -1333,10 +1190,10 @@
           }
           return;
         }
-        // Jordan easter egg: trigger on name or team label "GRAVEDIGGER"
+        // Jordan easter egg: trigger on manager name or current team label.
         const isJordan = mgr.name.trim().toLowerCase() === 'jordan';
-        const isGraveDigger = (mgr.teamLabel || '').trim().toLowerCase() === 'gravedigger';
-        if ((isJordan || isGraveDigger) && jordanAudioRef.current) {
+        const isJordanTeam = (mgr.teamLabel || '').trim().toLowerCase() === "jordan's scary team";
+        if ((isJordan || isJordanTeam) && jordanAudioRef.current) {
           try {
             pauseAllEggs();
             jordanAudioRef.current.currentTime = 0;
@@ -1849,6 +1706,8 @@
             </h2>
             <ul className="list-disc pl-5 space-y-1">
               <li><strong>Survivors first</strong>: Last manager standing gets #1 pick; other survivors follow (#2, #3, ...).</li>
+              <li><strong>Multiple survivors</strong>: Higher cumulative winning margin ranks higher, then last year’s finish.</li>
+              <li><strong>Different elimination weeks</strong>: The manager who survived longer ranks higher.</li>
               <li><strong>Same-week elimination</strong>: Higher <em>margin of victory that week</em> ranks higher.</li>
               <li><strong>Still tied</strong>: Higher <em>last year’s finish</em> ranks higher.</li>
               <li><strong>If all eliminated same week</strong>: Use that week’s margin, then last year’s finish.</li>
