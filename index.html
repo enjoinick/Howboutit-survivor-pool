@@ -650,7 +650,7 @@
         if (queue.lastUpdated) setLastUpdated(queue.lastUpdated);
       };
 
-      const fetchPickQueue = async () => {
+      const fetchPickQueue = async ({ preserveError = false } = {}) => {
         const base = String(pickConfig.apiBase || '').replace(/\/$/, '');
         if (!pickConfig.enabled || !base) return;
         setPickQueueLoading(true);
@@ -662,9 +662,9 @@
           }
           setPickQueue(payload.queue);
           mergeQueuePicks(payload.queue);
-          setPickError('');
+          if (!preserveError) setPickError('');
         } catch (error) {
-          setPickError(error.message || 'Pick queue is temporarily unavailable.');
+          if (!preserveError) setPickError(error.message || 'Pick queue is temporarily unavailable.');
         } finally {
           setPickQueueLoading(false);
         }
@@ -690,10 +690,13 @@
         setPickSubmitting(true);
         setPickError('');
         setPickSuccess('');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
         try {
           const response = await fetch(`${base}/pick-queue`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
               manager: current.name,
               week: pickQueue.activeWeek,
@@ -711,9 +714,15 @@
           setShowPickConfirm(false);
           await loadData();
         } catch (error) {
-          setPickError(error.message || 'The pick was not accepted.');
-          await fetchPickQueue();
+          const message = error && error.name === 'AbortError'
+            ? 'The pick service took too long to respond. Your pick was not confirmed; try again.'
+            : (error instanceof TypeError
+              ? 'Could not reach the pick service. Check your connection and try again.'
+              : (error.message || 'The pick was not accepted.'));
+          setPickError(message);
+          fetchPickQueue({ preserveError: true });
         } finally {
+          clearTimeout(timeout);
           setPickSubmitting(false);
         }
       };
@@ -1580,6 +1589,11 @@
                   <div className="text-xl font-bold text-cyan-200">{pickTeam}</div>
                 </div>
                 <p className="text-sm text-purple-200 mt-4">There is no self-service undo. If this is wrong, the commissioner can correct it in the admin page.</p>
+                {pickError && (
+                  <div className="mt-4 rounded-xl border border-red-400/50 bg-red-500/25 p-3 text-sm text-red-100" role="alert">
+                    <i className="fas fa-circle-exclamation mr-2"></i>{pickError}
+                  </div>
+                )}
                 <div className="flex justify-end gap-3 mt-6">
                   <button
                     onClick={() => setShowPickConfirm(false)}

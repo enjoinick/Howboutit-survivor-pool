@@ -86,6 +86,20 @@ test('a manager cannot reuse a team from an earlier week', () => {
   );
 });
 
+test('a team already picked by another manager is unavailable that week', () => {
+  const data = buildData();
+  data.managers[0].picks[0].team = 'Jacksonville Jaguars';
+  const state = deriveQueueState(data, beforeDeadline);
+  assert.equal(state.currentManager.name, 'Jordan');
+  assert.equal(state.availableTeams.includes('Jacksonville Jaguars'), false);
+  assert.throws(
+    () => applySubmission(data, { manager: 'Jordan', week: 1, team: 'Jacksonville Jaguars' }, beforeDeadline),
+    (error) => error instanceof QueueError
+      && error.code === 'team_taken_this_week'
+      && error.message.includes('Weston')
+  );
+});
+
 test('eliminated managers are skipped unless buyback is active', () => {
   const data = buildData();
   data.managers[0].eliminated = true;

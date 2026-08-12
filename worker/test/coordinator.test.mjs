@@ -93,3 +93,36 @@ test('coordinator returns a conflict response for an out-of-order turn', async (
     globalThis.fetch = originalFetch;
   }
 });
+
+test('coordinator rejects the same team for consecutive managers', async () => {
+  let liveData = buildData();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options = {}) => {
+    if ((options.method || 'GET') === 'PATCH') {
+      const payload = JSON.parse(options.body);
+      liveData = JSON.parse(payload.files['data.json'].content);
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      files: {
+        'data.json': {
+          content: JSON.stringify(liveData),
+          truncated: false
+        }
+      }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const coordinator = new PickQueueCoordinator({}, env);
+    const westonResponse = await coordinator.fetch(submissionRequest('Weston', 'Jacksonville Jaguars'));
+    const jordanResponse = await coordinator.fetch(submissionRequest('Jordan', 'Jacksonville Jaguars'));
+    const payload = await jordanResponse.json();
+    assert.equal(westonResponse.status, 201);
+    assert.equal(jordanResponse.status, 409);
+    assert.equal(payload.error, 'team_taken_this_week');
+    assert.equal(liveData.managers[1].picks[0].team, '');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

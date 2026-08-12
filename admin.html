@@ -250,6 +250,7 @@
         const poolManagers = Array.isArray(data && data.managers) ? data.managers : [];
         const rankOwners = new Map();
         const nameOwners = new Map();
+        const weeklyTeamOwners = new Map();
 
         poolManagers.forEach((manager, index) => {
           const name = String(manager && manager.name || '').trim();
@@ -276,10 +277,22 @@
           (Array.isArray(manager && manager.picks) ? manager.picks : []).forEach((pick, pickIndex) => {
             const team = String(pick && pick.team || '').trim();
             if (!team) return;
-            if (usedTeams.has(team)) {
+            const teamKey = team.toLowerCase();
+            if (usedTeams.has(teamKey)) {
               errors.push({ instancePath: `/managers/${index}/picks/${pickIndex}/team`, message: `reuses ${team} in another week` });
             }
-            usedTeams.add(team);
+            usedTeams.add(teamKey);
+
+            const week = Number(pick && pick.week) || pickIndex + 1;
+            const weeklyKey = `${week}:${teamKey}`;
+            if (weeklyTeamOwners.has(weeklyKey)) {
+              errors.push({
+                instancePath: `/managers/${index}/picks/${pickIndex}/team`,
+                message: `duplicates ${team} in Week ${week}; already picked by ${weeklyTeamOwners.get(weeklyKey)}`
+              });
+            } else {
+              weeklyTeamOwners.set(weeklyKey, name || `manager ${index + 1}`);
+            }
           });
         });
 
@@ -490,10 +503,27 @@
         };
       });
 
+      const getTeamConflict = (managerIndex, weekIndex, team) => {
+        if (!team) return null;
+        const manager = managers[managerIndex];
+        const week = Number(manager && manager.picks && manager.picks[weekIndex] && manager.picks[weekIndex].week) || weekIndex + 1;
+        const reusedByManager = (manager && Array.isArray(manager.picks) ? manager.picks : [])
+          .some((pick, index) => index !== weekIndex && pick.team === team);
+        if (reusedByManager) return 'another-week';
+        const weeklyOwner = managers.find((candidate, index) => index !== managerIndex
+          && (Array.isArray(candidate && candidate.picks) ? candidate.picks : [])
+            .some((pick) => Number(pick && pick.week) === week && pick.team === team));
+        return weeklyOwner ? { type: 'same-week', manager: weeklyOwner.name, week } : null;
+      };
+
       const handlePickChange = (managerIndex, weekIndex, value) => {
-        // Prevent duplicate team picks for the same manager
-        if (value && managers[managerIndex].picks.some((p, idx) => idx !== weekIndex && p.team === value)) {
+        const conflict = getTeamConflict(managerIndex, weekIndex, value);
+        if (conflict === 'another-week') {
           showNotification('This team is already used in another week for this manager', 'error');
+          return;
+        }
+        if (conflict && conflict.type === 'same-week') {
+          showNotification(`${value} is already picked by ${conflict.manager} for Week ${conflict.week}`, 'error');
           return;
         }
         const updatedManagers = structuredClone(managers);
@@ -1116,10 +1146,10 @@
                               <option
                                 key={team}
                                 value={team}
-                                disabled={manager.picks.some((p, idx) => idx !== weekIndex && p.team === team)}
+                                disabled={Boolean(getTeamConflict(managerIndex, weekIndex, team))}
                               >
                                 {team}
-                                {manager.picks.some((p, idx) => idx !== weekIndex && p.team === team) ? ' (used)' : ''}
+                                {getTeamConflict(managerIndex, weekIndex, team) ? ' (used)' : ''}
                               </option>
                             ))}
                           </select>
