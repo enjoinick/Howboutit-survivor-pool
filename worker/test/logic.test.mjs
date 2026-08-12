@@ -31,6 +31,19 @@ test('queue starts with the first configured manager', () => {
   assert.equal(state.entries[0].status, 'current');
 });
 
+test('the active week selects its own configured order', () => {
+  const data = buildData();
+  data.pickQueue.activeWeek = 2;
+  data.pickQueue.orders = {
+    '1': order,
+    '2': ['Nick', 'Ryan', 'Michael', 'Kevin', 'Matt', 'Austin', 'Chris', 'Josh', 'Jordan', 'Weston']
+  };
+  const state = deriveQueueState(data, beforeDeadline);
+  assert.equal(state.currentManager.name, 'Nick');
+  assert.equal(state.entries[0].name, 'Nick');
+  assert.equal(state.entries.at(-1).name, 'Weston');
+});
+
 test('an accepted pick advances exactly one turn', () => {
   const result = applySubmission(buildData(), {
     manager: 'Weston',

@@ -30,7 +30,7 @@ Single-page React app (vanilla React via `<script>` in `index.html`) hosted on G
 - The public site never receives or stores a GitHub token. Pick submissions go to a Cloudflare Durable Object that serializes turns and writes to the Gist with a server-side secret.
 - Admin writes require a short-lived Gist-only token. The token is kept only in the open admin tab, is never written to `localStorage`, and is cleared after a successful save.
 - The admin validates unique manager names, unique tiebreak ranks from 1 through the manager count, and duplicate team picks before saving.
-- `data.json.pickQueue` controls the enabled state, active week, explicit turn order, and weekly deadlines. The admin can open/close the queue and advance its active week.
+- `data.json.pickQueue` controls the enabled state, active week, week-specific turn orders, and weekly deadlines. The admin can open/close the queue and advance its active week without changing another week’s order.
 - Fantasy ADP is configured for 2026 in `config.json`.
 
 ## Local Development

@@ -4,17 +4,55 @@
     "enabled": true,
     "activeWeek": 1,
     "order": [
-      "Weston",
-      "Jordan",
-      "Josh",
-      "Chris",
-      "Austin",
-      "Matt",
-      "Kevin",
-      "Michael",
+      "Nick",
       "Ryan",
-      "Nick"
+      "Michael",
+      "Kevin",
+      "Matt",
+      "Austin",
+      "Chris",
+      "Josh",
+      "Jordan",
+      "Weston"
     ],
+    "orders": {
+      "1": [
+        "Nick",
+        "Ryan",
+        "Michael",
+        "Kevin",
+        "Matt",
+        "Austin",
+        "Chris",
+        "Josh",
+        "Jordan",
+        "Weston"
+      ],
+      "2": [
+        "Weston",
+        "Jordan",
+        "Josh",
+        "Chris",
+        "Austin",
+        "Matt",
+        "Kevin",
+        "Michael",
+        "Ryan",
+        "Nick"
+      ],
+      "3": [
+        "Weston",
+        "Jordan",
+        "Josh",
+        "Chris",
+        "Austin",
+        "Matt",
+        "Kevin",
+        "Michael",
+        "Ryan",
+        "Nick"
+      ]
+    },
     "deadlines": {
       "1": "2026-08-13T19:00:00-04:00",
       "2": "2026-08-20T20:00:00-04:00",
@@ -73,7 +111,7 @@
     },
     {
       "name": "Michael",
-      "teamLabel": "The Sacks Kingdom",
+      "teamLabel": "Nut Sacks",
       "lastYearRank": 8,
       "picks": [
         {
