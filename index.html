@@ -241,12 +241,22 @@
       // Feature flags and Fantasy ADP state
       const [features, setFeatures] = useState({
         showFantasyADP: false,
+        pickSubmission: { enabled: false, apiBase: '', pollSeconds: 12 },
         adp: { scoring: 'ppr', teams: 10, year: SEASON_YEAR, topN: 100 }
       });
       const [fantasyADP, setFantasyADP] = useState([]);
       const [adpLoading, setAdpLoading] = useState(false);
       const [adpError, setAdpError] = useState('');
       const [adpPosition, setAdpPosition] = useState('ALL');
+      // Public, no-login pick queue. The Worker remains authoritative for turn order.
+      const [pickConfig, setPickConfig] = useState({ enabled: false, apiBase: '', pollSeconds: 12 });
+      const [pickQueue, setPickQueue] = useState(null);
+      const [pickQueueLoading, setPickQueueLoading] = useState(false);
+      const [pickTeam, setPickTeam] = useState('');
+      const [pickSubmitting, setPickSubmitting] = useState(false);
+      const [pickError, setPickError] = useState('');
+      const [pickSuccess, setPickSuccess] = useState('');
+      const [showPickConfirm, setShowPickConfirm] = useState(false);
 
       // Manual refresh throttling
       const REFRESH_THROTTLE_MS = 15000; // 15s between manual refreshes
@@ -611,8 +621,12 @@
               setFeatures(prev => ({
                 ...prev,
                 ...cfg.features,
+                pickSubmission: { ...prev.pickSubmission, ...(cfg.features.pickSubmission || {}) },
                 adp: { ...prev.adp, ...(cfg.features.adp || {}) }
               }));
+              if (cfg.features.pickSubmission) {
+                setPickConfig(prev => ({ ...prev, ...cfg.features.pickSubmission }));
+              }
             }
           }
         } catch (e) {
@@ -698,6 +712,87 @@
       useEffect(() => {
         loadData();
       }, []);
+
+      const mergeQueuePicks = (queue) => {
+        if (!queue || !Array.isArray(queue.entries)) return;
+        setManagers(current => current.map(manager => {
+          const entry = queue.entries.find(candidate => candidate.name === manager.name);
+          if (!entry || !entry.team) return manager;
+          const picks = (manager.picks || []).map(pick => Number(pick.week) === Number(queue.activeWeek)
+            ? { ...pick, team: entry.team }
+            : pick);
+          return { ...manager, picks };
+        }));
+        if (queue.lastUpdated) setLastUpdated(queue.lastUpdated);
+      };
+
+      const fetchPickQueue = async () => {
+        const base = String(pickConfig.apiBase || '').replace(/\/$/, '');
+        if (!pickConfig.enabled || !base) return;
+        setPickQueueLoading(true);
+        try {
+          const response = await fetch(`${base}/pick-queue?t=${Date.now()}`, { cache: 'no-store' });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.queue) {
+            throw new Error(payload.message || 'Pick queue is temporarily unavailable.');
+          }
+          setPickQueue(payload.queue);
+          mergeQueuePicks(payload.queue);
+          setPickError('');
+        } catch (error) {
+          setPickError(error.message || 'Pick queue is temporarily unavailable.');
+        } finally {
+          setPickQueueLoading(false);
+        }
+      };
+
+      useEffect(() => {
+        if (!pickConfig.enabled || !pickConfig.apiBase) return undefined;
+        fetchPickQueue();
+        const seconds = Math.max(8, Number(pickConfig.pollSeconds || 12));
+        const timer = setInterval(fetchPickQueue, seconds * 1000);
+        return () => clearInterval(timer);
+      }, [pickConfig.enabled, pickConfig.apiBase, pickConfig.pollSeconds]);
+
+      useEffect(() => {
+        setPickTeam('');
+        setShowPickConfirm(false);
+      }, [pickQueue && pickQueue.currentManager && pickQueue.currentManager.name, pickQueue && pickQueue.activeWeek]);
+
+      const submitPublicPick = async () => {
+        const current = pickQueue && pickQueue.currentManager;
+        const base = String(pickConfig.apiBase || '').replace(/\/$/, '');
+        if (!current || !pickTeam || !base) return;
+        setPickSubmitting(true);
+        setPickError('');
+        setPickSuccess('');
+        try {
+          const response = await fetch(`${base}/pick-queue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              manager: current.name,
+              week: pickQueue.activeWeek,
+              team: pickTeam
+            })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.accepted) {
+            throw new Error(payload.message || 'The pick was not accepted. Refresh and try again.');
+          }
+          setPickQueue(payload.queue);
+          mergeQueuePicks(payload.queue);
+          setPickSuccess(`${payload.receipt.manager}'s Week ${payload.receipt.week} pick is locked in: ${payload.receipt.team}.`);
+          setPickTeam('');
+          setShowPickConfirm(false);
+          await loadData();
+        } catch (error) {
+          setPickError(error.message || 'The pick was not accepted.');
+          await fetchPickQueue();
+        } finally {
+          setPickSubmitting(false);
+        }
+      };
 
       // Remove credentials/preferences left by older public auto-save builds.
       useEffect(() => {
@@ -1577,6 +1672,155 @@
               </div>
             </div>
           </div>
+
+          {/* Honor-system weekly pick queue */}
+          {pickConfig.enabled && (
+            <section className="glass rounded-2xl p-5 md:p-6 border border-cyan-300/30 animate-fade-in" aria-labelledby="pick-queue-heading">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2 py-1 rounded-full bg-cyan-400 text-indigo-950 text-xs font-black">YOUR TURN</span>
+                    <span className="text-sm text-purple-200">No login required • honor system</span>
+                  </div>
+                  <h2 id="pick-queue-heading" className="text-2xl md:text-3xl font-bold mt-3">
+                    Week {pickQueue ? pickQueue.activeWeek : '—'} Pick Queue
+                  </h2>
+                  {pickQueue && pickQueue.deadline && (
+                    <p className="text-sm text-purple-200 mt-1">
+                      Deadline: {new Date(pickQueue.deadline).toLocaleString([], { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })} ET
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={fetchPickQueue}
+                  disabled={pickQueueLoading || pickSubmitting}
+                  className="self-start px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-50 text-sm"
+                >
+                  <i className={`fas fa-rotate mr-2 ${pickQueueLoading ? 'animate-rotate' : ''}`}></i>
+                  Refresh queue
+                </button>
+              </div>
+
+              {pickQueueLoading && !pickQueue && (
+                <div className="mt-5 rounded-xl bg-black/20 p-5 text-center text-purple-200">Checking whose turn it is…</div>
+              )}
+
+              {pickError && (
+                <div className="mt-5 rounded-xl border border-red-400/40 bg-red-500/20 p-4 text-red-100" role="alert">
+                  <i className="fas fa-circle-exclamation mr-2"></i>{pickError}
+                </div>
+              )}
+
+              {pickSuccess && (
+                <div className="mt-5 rounded-xl border border-green-300/40 bg-green-500/20 p-4 text-green-100" role="status">
+                  <i className="fas fa-circle-check mr-2"></i>{pickSuccess}
+                </div>
+              )}
+
+              {pickQueue && !pickQueue.enabled && (
+                <div className="mt-5 rounded-xl bg-black/20 p-5 text-center">
+                  <div className="text-xl font-bold">The commissioner has closed this week’s queue.</div>
+                  <p className="text-purple-200 mt-1">Check back when picks open.</p>
+                </div>
+              )}
+
+              {pickQueue && pickQueue.enabled && pickQueue.locked && (
+                <div className="mt-5 rounded-xl border border-amber-300/40 bg-amber-500/20 p-5 text-center">
+                  <div className="text-xl font-bold">Week {pickQueue.activeWeek} picks are locked.</div>
+                  <p className="text-amber-100 mt-1">The submission deadline has passed. Contact the commissioner for a correction.</p>
+                </div>
+              )}
+
+              {pickQueue && pickQueue.enabled && !pickQueue.locked && pickQueue.complete && (
+                <div className="mt-5 rounded-xl border border-green-300/40 bg-green-500/20 p-5 text-center">
+                  <div className="text-xl font-bold">Everybody eligible has picked for Week {pickQueue.activeWeek}.</div>
+                  <p className="text-green-100 mt-1">Good work, degenerates. The commissioner will open the next week.</p>
+                </div>
+              )}
+
+              {pickQueue && pickQueue.enabled && !pickQueue.locked && !pickQueue.complete && pickQueue.currentManager && (
+                <div className="mt-5 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.75fr)] gap-5">
+                  <div className="rounded-xl bg-gradient-to-br from-cyan-500/25 to-purple-600/25 border border-cyan-200/30 p-5">
+                    <p className="text-sm uppercase tracking-wider text-cyan-100 font-bold">Pick {pickQueue.currentManager.position} of {pickQueue.currentManager.total}</p>
+                    <div className="text-3xl font-black mt-1">{pickQueue.currentManager.name}, you’re up.</div>
+                    <div className="text-purple-100 mt-1">{pickQueue.currentManager.teamLabel}</div>
+                    <p className="text-sm text-purple-200 mt-4">Only this manager’s pick will be accepted. Once submitted, the queue advances to the next name.</p>
+                  </div>
+                  <div className="rounded-xl bg-black/20 p-5">
+                    <label htmlFor="public-pick-team" className="block font-semibold mb-2">Choose an NFL team</label>
+                    <select
+                      id="public-pick-team"
+                      value={pickTeam}
+                      onChange={(event) => {
+                        setPickTeam(event.target.value);
+                        setPickError('');
+                        setPickSuccess('');
+                      }}
+                      className="w-full p-3 rounded-lg bg-indigo-950 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                    >
+                      <option value="">Select a team…</option>
+                      {pickQueue.availableTeams.map(team => <option key={team} value={team}>{team}</option>)}
+                    </select>
+                    <button
+                      onClick={() => setShowPickConfirm(true)}
+                      disabled={!pickTeam || pickSubmitting}
+                      className="w-full mt-3 px-4 py-3 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-indigo-950 font-black disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Review {pickQueue.currentManager.name}’s pick
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {pickQueue && Array.isArray(pickQueue.entries) && (
+                <div className="mt-5">
+                  <div className="text-sm font-semibold text-purple-100 mb-2">Queue progress</div>
+                  <div className="flex flex-wrap gap-2">
+                    {pickQueue.entries.map(entry => (
+                      <span
+                        key={entry.name}
+                        className={`px-3 py-1.5 rounded-full text-sm border ${entry.status === 'picked' ? 'bg-green-500/25 border-green-300/40 text-green-100' : entry.status === 'current' ? 'bg-cyan-400 text-indigo-950 border-cyan-200 font-black' : entry.status === 'ineligible' ? 'bg-gray-700/60 border-gray-500 text-gray-300 line-through' : 'bg-black/20 border-white/10 text-purple-200'}`}
+                        title={entry.team || entry.status}
+                      >
+                        {entry.position}. {entry.name}{entry.status === 'picked' ? ' ✓' : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {showPickConfirm && pickQueue && pickQueue.currentManager && (
+            <div className="fixed inset-0 z-[100] bg-black/75 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-pick-heading">
+              <div className="glass rounded-2xl p-6 max-w-md w-full border border-cyan-300/40">
+                <h2 id="confirm-pick-heading" className="text-2xl font-bold">Lock in this pick?</h2>
+                <div className="mt-4 rounded-xl bg-black/25 p-4">
+                  <div className="text-sm text-purple-200">Manager</div>
+                  <div className="text-xl font-bold">{pickQueue.currentManager.name}</div>
+                  <div className="text-sm text-purple-200 mt-3">Week {pickQueue.activeWeek} team</div>
+                  <div className="text-xl font-bold text-cyan-200">{pickTeam}</div>
+                </div>
+                <p className="text-sm text-purple-200 mt-4">There is no self-service undo. If this is wrong, the commissioner can correct it in the admin page.</p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setShowPickConfirm(false)}
+                    disabled={pickSubmitting}
+                    className="px-4 py-2 rounded-lg bg-gray-600 hover:bg-gray-500"
+                  >
+                    Go back
+                  </button>
+                  <button
+                    onClick={submitPublicPick}
+                    disabled={pickSubmitting}
+                    className="px-4 py-2 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-indigo-950 font-black disabled:opacity-50"
+                  >
+                    {pickSubmitting ? 'Submitting…' : 'Confirm pick'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Stats Overview */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in">

@@ -4,7 +4,7 @@
 
 ## Overview
 
-Single-page React app (vanilla React via `<script>` in `index.html`) hosted on GitHub Pages. It tracks preseason picks, live scores, cumulative margins, eliminations, and fantasy draft order. The companion `admin.html` page manages picks and can persist them to a GitHub Gist.
+Single-page React app (vanilla React via `<script>` in `index.html`) hosted on GitHub Pages. It tracks preseason picks, live scores, cumulative margins, eliminations, and fantasy draft order. The public page includes an honor-system weekly pick queue, while the companion `admin.html` page manages overrides and persists data to a GitHub Gist.
 
 ## 2026 Season
 
@@ -22,13 +22,15 @@ Single-page React app (vanilla React via `<script>` in `index.html`) hosted on G
 - Picks lock at their explicit Eastern Time kickoff.
 - Audio assets lazy-load and a global mute preference persists in `localStorage`.
 - The admin validates data and previews changes before saving to the Gist.
+- The public queue shows only the next eligible manager, validates the active week and deadline, and advances after one accepted pick.
 
 ## Data and Persistence
 
 - Public reads use the configured GitHub Gist only when it matches the active season; otherwise they fall back to `data.json`.
-- The public site is strictly read-only. It never stores a GitHub token and cannot write to the Gist.
+- The public site never receives or stores a GitHub token. Pick submissions go to a Cloudflare Durable Object that serializes turns and writes to the Gist with a server-side secret.
 - Admin writes require a short-lived Gist-only token. The token is kept only in the open admin tab, is never written to `localStorage`, and is cleared after a successful save.
 - The admin validates unique manager names, unique tiebreak ranks from 1 through the manager count, and duplicate team picks before saving.
+- `data.json.pickQueue` controls the enabled state, active week, explicit turn order, and weekly deadlines. The admin can open/close the queue and advance its active week.
 - Fantasy ADP is configured for 2026 in `config.json`.
 
 ## Local Development
@@ -45,6 +47,12 @@ Browser state:
 - The default admin password for a new browser is `survivor2026`; change it after first login.
 
 The admin password is a local convenience lock, not server-side authentication. The GitHub token is the write credential and should be narrowly scoped, short-lived, and revoked after the pool ends.
+
+## Pick Queue Worker
+
+The Worker lives in `worker/` and uses one SQLite-backed Durable Object to serialize submissions. Deploy it from that directory with Wrangler, then set the `GIST_TOKEN` secret to a token with Gists write permission. `GIST_ID`, allowed browser origins, and the season are non-secret Wrangler variables.
+
+There is intentionally no manager login. Anyone with the pool URL can act for the manager whose turn is displayed, so the queue enforces order and data rules but relies on the league's honor system for identity.
 
 ## Notes
 

@@ -3,6 +3,11 @@
   "gistId": "YOUR_GIST_ID_HERE",
   "features": {
     "showFantasyADP": true,
+    "pickSubmission": {
+      "enabled": false,
+      "apiBase": "https://YOUR_PICK_WORKER.workers.dev",
+      "pollSeconds": 12
+    },
     "adp": {
       "scoring": "ppr",
       "teams": 10,

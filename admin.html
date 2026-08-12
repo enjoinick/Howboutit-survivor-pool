@@ -177,10 +177,21 @@
       // Lightweight JSON Schema for admin validation (kept permissive to avoid blocking legitimate data)
       const jsonSchema = {
         type: 'object',
-        required: ['season', 'managers'],
+        required: ['season', 'managers', 'pickQueue'],
         additionalProperties: true,
         properties: {
           season: { type: 'integer', const: SEASON_YEAR },
+          pickQueue: {
+            type: 'object',
+            required: ['enabled', 'activeWeek', 'order', 'deadlines'],
+            additionalProperties: true,
+            properties: {
+              enabled: { type: 'boolean' },
+              activeWeek: { type: 'integer', minimum: 1, maximum: 3 },
+              order: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string', minLength: 1 } },
+              deadlines: { type: 'object', additionalProperties: { type: 'string' } }
+            }
+          },
           managers: {
             type: 'array',
             items: {
@@ -255,6 +266,28 @@
             usedTeams.add(team);
           });
         });
+
+        const queue = data && data.pickQueue;
+        if (queue && Array.isArray(queue.order)) {
+          const managerNames = new Set(poolManagers.map((manager) => String(manager && manager.name || '').trim().toLowerCase()));
+          const queueNames = new Set();
+          queue.order.forEach((name, index) => {
+            const key = String(name || '').trim().toLowerCase();
+            if (!managerNames.has(key)) {
+              errors.push({ instancePath: `/pickQueue/order/${index}`, message: `references unknown manager ${name}` });
+            }
+            if (queueNames.has(key)) {
+              errors.push({ instancePath: `/pickQueue/order/${index}`, message: `duplicates manager ${name}` });
+            }
+            queueNames.add(key);
+          });
+          poolManagers.forEach((manager) => {
+            const name = String(manager && manager.name || '').trim();
+            if (name && !queueNames.has(name.toLowerCase())) {
+              errors.push({ instancePath: '/pickQueue/order', message: `is missing manager ${name}` });
+            }
+          });
+        }
 
         return errors;
       };
@@ -512,6 +545,30 @@
         setDirty(true);
       };
 
+      const updatePickQueue = (changes) => {
+        const fallbackOrder = managers
+          .slice()
+          .sort((a, b) => Number(a.lastYearRank || 999) - Number(b.lastYearRank || 999))
+          .map((manager) => manager.name);
+        const data = {
+          ...completeData,
+          season: SEASON_YEAR,
+          managers,
+          pickQueue: {
+            enabled: false,
+            activeWeek: 1,
+            order: fallbackOrder,
+            deadlines: {},
+            ...(completeData.pickQueue || {}),
+            ...changes
+          },
+          lastUpdated: new Date().toISOString()
+        };
+        setCompleteData(data);
+        setJsonData(JSON.stringify(data, null, 2));
+        setDirty(true);
+      };
+
       // Copy current JSON to clipboard
       const copyJson = async () => {
         try {
@@ -757,6 +814,19 @@
           </div>
         );
       }
+
+      const fallbackQueueOrder = managers
+        .slice()
+        .sort((a, b) => Number(a.lastYearRank || 999) - Number(b.lastYearRank || 999))
+        .map((manager) => manager.name);
+      const pickQueueConfig = {
+        enabled: false,
+        activeWeek: 1,
+        order: fallbackQueueOrder,
+        deadlines: {},
+        ...(completeData.pickQueue || {})
+      };
+      const activeQueueDeadline = pickQueueConfig.deadlines && pickQueueConfig.deadlines[String(pickQueueConfig.activeWeek)];
       
       return (
         <div className="min-h-screen p-4">
@@ -876,6 +946,64 @@
                 Add New Manager
               </button>
             </div>
+
+            {/* Public Pick Queue Controls */}
+            <section className="glass rounded-2xl p-5 mb-8">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <i className="fas fa-people-arrows"></i> Public Pick Queue
+                  </h2>
+                  <p className="text-sm text-purple-200 mt-1">Open one week at a time. The public page advances through this order after each accepted pick.</p>
+                </div>
+                <label className="flex items-center gap-2 rounded-lg bg-black/20 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={pickQueueConfig.enabled === true}
+                    onChange={(event) => updatePickQueue({ enabled: event.target.checked })}
+                    className="h-4 w-4"
+                  />
+                  <span className="font-semibold">{pickQueueConfig.enabled ? 'Queue open' : 'Queue closed'}</span>
+                </label>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+                <div>
+                  <label className="block text-sm mb-1">Active Week</label>
+                  <select
+                    value={pickQueueConfig.activeWeek}
+                    onChange={(event) => updatePickQueue({ activeWeek: Number(event.target.value) })}
+                    className="w-full p-2 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    {[1, 2, 3].map((week) => <option key={week} value={week}>Week {week}</option>)}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm mb-1">Deadline</label>
+                  <div className="p-2 rounded-lg bg-black/20 text-purple-100 min-h-[42px]">
+                    {activeQueueDeadline ? new Date(activeQueueDeadline).toLocaleString([], { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' }) + ' ET' : 'No deadline configured'}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+                  <span className="text-sm font-semibold">Turn order</span>
+                  <button
+                    onClick={() => updatePickQueue({ order: fallbackQueueOrder })}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm"
+                  >
+                    Use 2025 tiebreak order
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {pickQueueConfig.order.map((name, index) => (
+                    <span key={`${name}-${index}`} className="px-3 py-1 rounded-full bg-purple-600/40 border border-purple-300/20 text-sm">
+                      {index + 1}. {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs text-purple-300 mt-4">Save to Gist after changing these controls. Closing the queue takes effect as soon as the Gist save completes.</p>
+            </section>
             
             {/* Manager Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
