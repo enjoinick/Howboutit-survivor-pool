@@ -79,9 +79,6 @@
       white-space: nowrap;
       will-change: transform;
     }
-    @media (hover: hover) {
-      .ticker-track:hover { animation-play-state: paused; }
-    }
     /* Glass effect */
     .glass {
       background: rgba(255, 255, 255, 0.1);
@@ -481,7 +478,6 @@
       const tickerWrapRef = useRef(null);
       const tickerTextRef = useRef(null); // first copy of stream for measurement
       const tickerTrackRef = useRef(null);
-      const [tickerDuration, setTickerDuration] = useState(20); // seconds
       const jokes = useMemo(() => [
         "Nick (Bake Her Lamb Raw) — Nick named the team like a cooking instruction whispered during a health-code violation. The roster will be served rare, overpriced, and somehow still blamed on the commissioner.",
         "Ryan (RIP Doug Martin) — Ryan built a memorial team for Doug Martin, which is touching until you realize his draft strategy also died around 2017. Respectful service, terrible waiver priority.",
@@ -495,8 +491,7 @@
         "Weston (Robert DUUUVAL) — Weston’s team remains one celebrity pun away from a Jacksonville zoning dispute. Shout DUUUVAL three times and a man in jorts appears to defend a nine-win ceiling."
       ], []);
       // Build continuous stream (initially in given order); click will reshuffle
-      const [streamJokes, setStreamJokes] = useState([]);
-      useEffect(() => { setStreamJokes(jokes); }, [jokes]);
+      const [streamJokes, setStreamJokes] = useState(() => jokes);
       const reshuffleStream = React.useCallback(() => {
         const arr = [...jokes];
         for (let i = arr.length - 1; i > 0; i--) {
@@ -520,7 +515,6 @@
         let seconds = contentW / PX_PER_SEC;
         // Clamp duration to avoid extremes
         seconds = Math.max(35, Math.min(120, seconds));
-        setTickerDuration(seconds);
         // Apply CSS variables and restart the animation cleanly
         track.style.setProperty('--from', '0px');
         track.style.setProperty('--to', `-${contentW}px`);
@@ -535,8 +529,17 @@
         track.style.animationPlayState = 'running';
       }, []);
 
-      // Recompute on stream changes and on resize
-      useEffect(() => { recomputeTicker(); }, [streamJokes, recomputeTicker]);
+      // Measure after the populated ticker has been laid out, including on the first render.
+      React.useLayoutEffect(() => {
+        let secondFrame = null;
+        const firstFrame = requestAnimationFrame(() => {
+          secondFrame = requestAnimationFrame(recomputeTicker);
+        });
+        return () => {
+          cancelAnimationFrame(firstFrame);
+          if (secondFrame !== null) cancelAnimationFrame(secondFrame);
+        };
+      }, [streamJokes, recomputeTicker]);
       useEffect(() => {
         const onResize = () => recomputeTicker();
         const onVisibility = () => { if (!document.hidden) recomputeTicker(); };
@@ -1686,11 +1689,11 @@
               <div className="text-sm">Managers</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-green-400">{orderedManagers.filter(m => m.eliminationWeek > (calendar.totalWeeks || preseasonSchedule.length || 0)).length}</div>
+              <div className="text-3xl font-bold text-green-400">{orderedManagers.filter(m => !m.isEliminated).length}</div>
               <div className="text-sm">Still Alive</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-red-400">{orderedManagers.filter(m => m.eliminationWeek <= (calendar.totalWeeks || preseasonSchedule.length || 0)).length}</div>
+              <div className="text-3xl font-bold text-red-400">{orderedManagers.filter(m => m.isEliminated).length}</div>
               <div className="text-sm">Eliminated</div>
             </div>
             <div className="glass rounded-xl p-4 text-center">
