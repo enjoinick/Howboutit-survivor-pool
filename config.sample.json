@@ -1,11 +1,12 @@
 {
+  "season": 2026,
   "gistId": "YOUR_GIST_ID_HERE",
   "features": {
     "showFantasyADP": true,
     "adp": {
       "scoring": "ppr",
       "teams": 10,
-      "year": 2025,
+      "year": 2026,
       "topN": 100,
       "proxyBase": ""
     }

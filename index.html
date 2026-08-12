@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HowBoutIt Preseason Survivor Pool</title>
-  <meta name="description" content="NFL Preseason Survivor Pool — live picks, margins, and draft order.">
+  <title>2026 HowBoutIt Preseason Survivor Pool</title>
+  <meta name="description" content="2026 NFL Preseason Survivor Pool — live picks, margins, and draft order.">
   <meta name="theme-color" content="#6d28d9">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -146,69 +146,72 @@
   <script type="text/babel">
     const { useState, useEffect, useRef, useMemo } = React;
     
-    // Preseason schedule used for reference
+    const SEASON_YEAR = 2026;
+    const isCurrentSeasonData = (data) => Number(data && data.season) === SEASON_YEAR;
+
+    // Official 2026 preseason schedule. The standalone Hall of Fame Game is not part of the pool.
     const preseasonSchedule = [
       {
         week: 1,
         games: [
-          { date: '2025-08-07', matchup: 'Indianapolis Colts at Baltimore Ravens', time: '7:00' },
-          { date: '2025-08-07', matchup: 'Cincinnati Bengals at Philadelphia Eagles', time: '7:30' },
-          { date: '2025-08-07', matchup: 'Las Vegas Raiders at Seattle Seahawks', time: '10:00' },
-          { date: '2025-08-08', matchup: 'Detroit Lions at Atlanta Falcons', time: '7:00' },
-          { date: '2025-08-08', matchup: 'Cleveland Browns at Carolina Panthers', time: '7:00' },
-          { date: '2025-08-08', matchup: 'Washington Commanders at New England Patriots', time: '7:30' },
-          { date: '2025-08-09', matchup: 'New York Giants at Buffalo Bills', time: '1:00' },
-          { date: '2025-08-09', matchup: 'Houston Texans at Minnesota Vikings', time: '4:00' },
-          { date: '2025-08-09', matchup: 'Pittsburgh Steelers at Jacksonville Jaguars', time: '7:00' },
-          { date: '2025-08-09', matchup: 'Dallas Cowboys at Los Angeles Rams', time: '7:00' },
-          { date: '2025-08-09', matchup: 'Tennessee Titans at Tampa Bay Buccaneers', time: '7:30' },
-          { date: '2025-08-09', matchup: 'Kansas City Chiefs at Arizona Cardinals', time: '8:00' },
-          { date: '2025-08-09', matchup: 'New York Jets at Green Bay Packers', time: '8:00' },
-          { date: '2025-08-09', matchup: 'Denver Broncos at San Francisco 49ers', time: '8:30' },
-          { date: '2025-08-10', matchup: 'Miami Dolphins at Chicago Bears', time: '1:00' },
-          { date: '2025-08-10', matchup: 'New Orleans Saints at Los Angeles Chargers', time: '4:05' },
+          { date: '2026-08-13', matchup: 'Detroit Lions at Cincinnati Bengals', time: '7:00 PM', kickoff: '2026-08-13T19:00:00-04:00' },
+          { date: '2026-08-13', matchup: 'Green Bay Packers at Pittsburgh Steelers', time: '7:00 PM', kickoff: '2026-08-13T19:00:00-04:00' },
+          { date: '2026-08-13', matchup: 'Indianapolis Colts at New England Patriots', time: '7:30 PM', kickoff: '2026-08-13T19:30:00-04:00' },
+          { date: '2026-08-13', matchup: 'Arizona Cardinals at Las Vegas Raiders', time: '8:00 PM', kickoff: '2026-08-13T20:00:00-04:00' },
+          { date: '2026-08-13', matchup: 'Los Angeles Chargers at Houston Texans', time: '8:00 PM', kickoff: '2026-08-13T20:00:00-04:00' },
+          { date: '2026-08-13', matchup: 'Tennessee Titans at San Francisco 49ers', time: '9:00 PM', kickoff: '2026-08-13T21:00:00-04:00' },
+          { date: '2026-08-14', matchup: 'Denver Broncos at Atlanta Falcons', time: '7:00 PM', kickoff: '2026-08-14T19:00:00-04:00' },
+          { date: '2026-08-14', matchup: 'Tampa Bay Buccaneers at New York Jets', time: '7:00 PM', kickoff: '2026-08-14T19:00:00-04:00' },
+          { date: '2026-08-14', matchup: 'Miami Dolphins at Washington Commanders', time: '7:00 PM', kickoff: '2026-08-14T19:00:00-04:00' },
+          { date: '2026-08-15', matchup: 'Carolina Panthers at Buffalo Bills', time: '1:00 PM', kickoff: '2026-08-15T13:00:00-04:00' },
+          { date: '2026-08-15', matchup: 'Cleveland Browns at Chicago Bears', time: '1:00 PM', kickoff: '2026-08-15T13:00:00-04:00' },
+          { date: '2026-08-15', matchup: 'Minnesota Vikings at New York Giants', time: '1:00 PM', kickoff: '2026-08-15T13:00:00-04:00' },
+          { date: '2026-08-15', matchup: 'Los Angeles Rams at Kansas City Chiefs', time: '4:00 PM', kickoff: '2026-08-15T16:00:00-04:00' },
+          { date: '2026-08-15', matchup: 'Jacksonville Jaguars at New Orleans Saints', time: '4:00 PM', kickoff: '2026-08-15T16:00:00-04:00' },
+          { date: '2026-08-15', matchup: 'Philadelphia Eagles at Baltimore Ravens', time: '7:00 PM', kickoff: '2026-08-15T19:00:00-04:00' },
+          { date: '2026-08-15', matchup: 'Dallas Cowboys at Seattle Seahawks', time: '8:00 PM', kickoff: '2026-08-15T20:00:00-04:00' },
         ]
       },
       {
         week: 2,
         games: [
-          { date: '2025-08-15', matchup: 'Tennessee Titans at Atlanta Falcons', time: '7:00' },
-          { date: '2025-08-15', matchup: 'Kansas City Chiefs at Seattle Seahawks', time: '10:00' },
-          { date: '2025-08-16', matchup: 'Miami Dolphins at Detroit Lions', time: '1:00' },
-          { date: '2025-08-16', matchup: 'Carolina Panthers at Houston Texans', time: '1:00' },
-          { date: '2025-08-16', matchup: 'Green Bay Packers at Indianapolis Colts', time: '1:00' },
-          { date: '2025-08-16', matchup: 'New England Patriots at Minnesota Vikings', time: '1:00' },
-          { date: '2025-08-16', matchup: 'Cleveland Browns at Philadelphia Eagles', time: '1:00' },
-          { date: '2025-08-16', matchup: 'San Francisco 49ers at Las Vegas Raiders', time: '4:00' },
-          { date: '2025-08-16', matchup: 'Baltimore Ravens at Dallas Cowboys', time: '7:00' },
-          { date: '2025-08-16', matchup: 'Los Angeles Chargers at Los Angeles Rams', time: '7:00' },
-          { date: '2025-08-16', matchup: 'New York Jets at New York Giants', time: '7:00' },
-          { date: '2025-08-16', matchup: 'Tampa Bay Buccaneers at Pittsburgh Steelers', time: '7:00' },
-          { date: '2025-08-16', matchup: 'Arizona Cardinals at Denver Broncos', time: '9:30' },
-          { date: '2025-08-17', matchup: 'Jacksonville Jaguars at New Orleans Saints', time: '1:00' },
-          { date: '2025-08-17', matchup: 'Buffalo Bills at Chicago Bears', time: '8:00' },
-          { date: '2025-08-18', matchup: 'Cincinnati Bengals at Washington Commanders', time: '8:00' },
+          { date: '2026-08-20', matchup: 'Las Vegas Raiders at Houston Texans', time: '8:00 PM', kickoff: '2026-08-20T20:00:00-04:00' },
+          { date: '2026-08-20', matchup: 'San Francisco 49ers at Los Angeles Chargers', time: '10:00 PM', kickoff: '2026-08-20T22:00:00-04:00' },
+          { date: '2026-08-21', matchup: 'New York Jets at Pittsburgh Steelers', time: '7:00 PM', kickoff: '2026-08-21T19:00:00-04:00' },
+          { date: '2026-08-21', matchup: 'Carolina Panthers at Jacksonville Jaguars', time: '7:30 PM', kickoff: '2026-08-21T19:30:00-04:00' },
+          { date: '2026-08-21', matchup: 'Green Bay Packers at Denver Broncos', time: '9:00 PM', kickoff: '2026-08-21T21:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'Washington Commanders at Detroit Lions', time: '12:00 PM', kickoff: '2026-08-22T12:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'Buffalo Bills at Cleveland Browns', time: '1:00 PM', kickoff: '2026-08-22T13:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'Atlanta Falcons at Indianapolis Colts', time: '1:00 PM', kickoff: '2026-08-22T13:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'Baltimore Ravens at Minnesota Vikings', time: '1:00 PM', kickoff: '2026-08-22T13:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'New Orleans Saints at Los Angeles Rams', time: '4:00 PM', kickoff: '2026-08-22T16:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'New York Giants at Miami Dolphins', time: '4:00 PM', kickoff: '2026-08-22T16:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'Chicago Bears at Cincinnati Bengals', time: '7:00 PM', kickoff: '2026-08-22T19:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'Philadelphia Eagles at New England Patriots', time: '7:00 PM', kickoff: '2026-08-22T19:00:00-04:00' },
+          { date: '2026-08-22', matchup: 'Kansas City Chiefs at Tampa Bay Buccaneers', time: '7:30 PM', kickoff: '2026-08-22T19:30:00-04:00' },
+          { date: '2026-08-22', matchup: 'Dallas Cowboys at Arizona Cardinals', time: '10:00 PM', kickoff: '2026-08-22T22:00:00-04:00' },
+          { date: '2026-08-23', matchup: 'Seattle Seahawks at Tennessee Titans', time: '8:00 PM', kickoff: '2026-08-23T20:00:00-04:00' },
         ]
       },
       {
         week: 3,
         games: [
-          { date: '2025-08-21', matchup: 'Pittsburgh Steelers at Carolina Panthers', time: '7:00' },
-          { date: '2025-08-21', matchup: 'New England Patriots at New York Giants', time: '8:00' },
-          { date: '2025-08-22', matchup: 'Philadelphia Eagles at New York Jets', time: '7:30' },
-          { date: '2025-08-22', matchup: 'Atlanta Falcons at Dallas Cowboys', time: '8:00' },
-          { date: '2025-08-22', matchup: 'Minnesota Vikings at Tennessee Titans', time: '8:00' },
-          { date: '2025-08-22', matchup: 'Chicago Bears at Kansas City Chiefs', time: '8:20' },
-          { date: '2025-08-23', matchup: 'Baltimore Ravens at Washington Commanders', time: '12:00' },
-          { date: '2025-08-23', matchup: 'Indianapolis Colts at Cincinnati Bengals', time: '1:00' },
-          { date: '2025-08-23', matchup: 'Los Angeles Rams at Cleveland Browns', time: '1:00' },
-          { date: '2025-08-23', matchup: 'Houston Texans at Detroit Lions', time: '1:00' },
-          { date: '2025-08-23', matchup: 'Denver Broncos at New Orleans Saints', time: '1:00' },
-          { date: '2025-08-23', matchup: 'Seattle Seahawks at Green Bay Packers', time: '4:00' },
-          { date: '2025-08-23', matchup: 'Jacksonville Jaguars at Miami Dolphins', time: '7:00' },
-          { date: '2025-08-23', matchup: 'Buffalo Bills at Tampa Bay Buccaneers', time: '7:30' },
-          { date: '2025-08-23', matchup: 'Los Angeles Chargers at San Francisco 49ers', time: '8:30' },
-          { date: '2025-08-23', matchup: 'Las Vegas Raiders at Arizona Cardinals', time: '10:00' },
+          { date: '2026-08-27', matchup: 'Pittsburgh Steelers at Buffalo Bills', time: '7:00 PM', kickoff: '2026-08-27T19:00:00-04:00' },
+          { date: '2026-08-27', matchup: 'New England Patriots at Cleveland Browns', time: '8:00 PM', kickoff: '2026-08-27T20:00:00-04:00' },
+          { date: '2026-08-27', matchup: 'San Francisco 49ers at Las Vegas Raiders', time: '8:00 PM', kickoff: '2026-08-27T20:00:00-04:00' },
+          { date: '2026-08-27', matchup: 'Los Angeles Rams at Los Angeles Chargers', time: '10:00 PM', kickoff: '2026-08-27T22:00:00-04:00' },
+          { date: '2026-08-28', matchup: 'Washington Commanders at Baltimore Ravens', time: '6:00 PM', kickoff: '2026-08-28T18:00:00-04:00' },
+          { date: '2026-08-28', matchup: 'Houston Texans at Carolina Panthers', time: '7:00 PM', kickoff: '2026-08-28T19:00:00-04:00' },
+          { date: '2026-08-28', matchup: 'Atlanta Falcons at Miami Dolphins', time: '7:00 PM', kickoff: '2026-08-28T19:00:00-04:00' },
+          { date: '2026-08-28', matchup: 'Tampa Bay Buccaneers at Jacksonville Jaguars', time: '7:30 PM', kickoff: '2026-08-28T19:30:00-04:00' },
+          { date: '2026-08-28', matchup: 'New York Giants at New York Jets', time: '7:30 PM', kickoff: '2026-08-28T19:30:00-04:00' },
+          { date: '2026-08-28', matchup: 'New Orleans Saints at Dallas Cowboys', time: '8:00 PM', kickoff: '2026-08-28T20:00:00-04:00' },
+          { date: '2026-08-28', matchup: 'Seattle Seahawks at Kansas City Chiefs', time: '8:00 PM', kickoff: '2026-08-28T20:00:00-04:00' },
+          { date: '2026-08-28', matchup: 'Cincinnati Bengals at Philadelphia Eagles', time: '8:00 PM', kickoff: '2026-08-28T20:00:00-04:00' },
+          { date: '2026-08-28', matchup: 'Arizona Cardinals at Green Bay Packers', time: '8:00 PM', kickoff: '2026-08-28T20:00:00-04:00' },
+          { date: '2026-08-28', matchup: 'Minnesota Vikings at Denver Broncos', time: '9:00 PM', kickoff: '2026-08-28T21:00:00-04:00' },
+          { date: '2026-08-29', matchup: 'Detroit Lions at Indianapolis Colts', time: '1:00 PM', kickoff: '2026-08-29T13:00:00-04:00' },
+          { date: '2026-08-29', matchup: 'Chicago Bears at Tennessee Titans', time: '6:00 PM', kickoff: '2026-08-29T18:00:00-04:00' },
         ]
       }
     ];
@@ -235,6 +238,7 @@
       // Public auto-persist controls
       const [autoPersist, setAutoPersist] = useState(localStorage.getItem('autoPersistEnabled') === 'true');
       const [gistIdState, setGistIdState] = useState((localStorage.getItem('gistId') || '').trim());
+      const [gistSeasonReady, setGistSeasonReady] = useState(false);
       const saveDebounceRef = useRef(null);
       const lastSavedHashRef = useRef('');
       // Keep a synchronous reference to gistId to avoid async state timing issues
@@ -242,7 +246,7 @@
       // Feature flags and Fantasy ADP state
       const [features, setFeatures] = useState({
         showFantasyADP: false,
-        adp: { scoring: 'ppr', teams: 10, year: 2025, topN: 100 }
+        adp: { scoring: 'ppr', teams: 10, year: SEASON_YEAR, topN: 100 }
       });
       const [fantasyADP, setFantasyADP] = useState([]);
       const [adpLoading, setAdpLoading] = useState(false);
@@ -480,9 +484,9 @@
         "Ryan (Quail Man SWAG) — Ryan, ‘Quail Man SWAG’? Bro, you’re reppin’ a deep-cut Doug Funnie reference like it’s 1996. Your team’s got the swag of a kid who brought a Capri Sun to prom. Bet you’re startin’ a backup RB who fumbles more than a drunk uncle at Thanksgiving.",
         "Weston (Robert DUUUVAL) — Weston, you’re ridin’ for Jacksonville harder than a guy with a mullet and a Natty Light tattoo. Bet you’re prayin’ to the ghost of Blake Bortles to save your season.",
         "Jordan (GRAVEDIGGER) — Jordan, the only thing you’re buryin’ is your playoff hopes. Your roster’s more like a 53-year-old accountant named Randy who pulled a hammy playin’ pickleball.",
-        "John (DELTA 8) — John, you sound like you drafted after hittin’ a gas-station vape. Your lineup’s got more gummies than touchdowns. Your WR1 retired in 2017 and you didn’t notice.",
+        "Matt (DELTA 8) — Matt, you sound like you drafted after hittin’ a gas-station vape. Your lineup’s got more gummies than touchdowns. Your WR1 retired in 2017 and you didn’t notice.",
         "Nick (Allen’s Dirty Brown Kupp) — Nick, that name’s so filthy it gets flagged on Craigslist. You’re bankin’ on Cooper Kupp while your WR2 sells bootleg jerseys in Lot B.",
-        "William (Just Win Baby) — William, more like ‘Just Lose, Maybe.’ You’re quotin’ Al Davis while your QB throws four picks. Just win? Try just survivin’ the group chat roast."
+        "Will (Just Win Baby) — Will, more like ‘Just Lose, Maybe.’ You’re quotin’ Al Davis while your QB throws four picks. Just win? Try just survivin’ the group chat roast."
       ], []);
       // Build continuous stream (initially in given order); click will reshuffle
       const [streamJokes, setStreamJokes] = useState([]);
@@ -596,6 +600,7 @@
       // Function to load data with cache-busting (prefers Gist via config.json)
       const loadData = async () => {
         setRefreshing(true);
+        setGistSeasonReady(false);
         const timestamp = new Date().getTime();
         // Try to read gistId from config.json
         let gistId = '';
@@ -652,21 +657,34 @@
             const res = await fetch(`${dataFile.raw_url}?t=${timestamp}`);
             if (!res.ok) throw new Error(`Gist raw fetch failed: ${res.status}`);
             const data = await res.json();
+            if (!isCurrentSeasonData(data)) {
+              const mismatchError = new Error(`Ignoring non-${SEASON_YEAR} Gist data`);
+              mismatchError.code = 'season_mismatch';
+              throw mismatchError;
+            }
             setManagers(data.managers || []);
             setGameResults(data.gameResults || {});
             setLastUpdated(data.lastUpdated || '');
+            setGistSeasonReady(true);
             setLoading(false);
             setRefreshing(false);
             await fetchADPIfEnabled(cfgFeatures);
             return;
           } catch (err) {
-            console.error('Gist load failed, falling back to local data.json:', err);
+            if (err && err.code === 'season_mismatch') {
+              console.info(`[Data] ${SEASON_YEAR} pool is using repository starter data until the Gist is rolled forward.`);
+            } else {
+              console.error('Gist load failed, falling back to local data.json:', err);
+            }
           }
         }
         // Fallback to local data.json
         try {
           const response = await fetch(`data.json?t=${timestamp}`);
           const data = await response.json();
+          if (!isCurrentSeasonData(data)) {
+            throw new Error(`Local data.json is not configured for ${SEASON_YEAR}`);
+          }
           setManagers(data.managers || []);
           setGameResults(data.gameResults || {});
           setLastUpdated(data.lastUpdated || '');
@@ -707,7 +725,11 @@
         let cancelled = false;
         async function fetchScores() {
           try {
-            const res = await fetchWithRetry('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard', {}, 5, 1000, 2);
+            // ESPN numbers the Hall of Fame window as preseason week 1, so pool weeks 1-3 map to ESPN weeks 2-4.
+            const { activeWeek } = computeCalendarState(preseasonSchedule);
+            const espnWeek = Math.min(4, Math.max(2, Number(activeWeek) + 1));
+            const scoreboardUrl = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${SEASON_YEAR}&seasontype=1&week=${espnWeek}&limit=100`;
+            const res = await fetchWithRetry(scoreboardUrl, {}, 5, 1000, 2);
             const data = await res.json();
             if (!cancelled) {
               setGames(data.events || []);
@@ -911,10 +933,8 @@
           return away === teamName || home === teamName;
         });
         if (!g) return false;
-        // Assume ET in August (DST -04:00). Times provided without am/pm are typical PM kickoff; treat as local ET clock time.
-        // Construct an ET-like timestamp explicitly.
-        const timeStr = (g.time || '00:00').padStart(5, '0');
-        const dt = new Date(`${g.date}T${timeStr}:00-04:00`);
+        // Prefer the explicit ET kickoff so afternoon games never lock at 1 a.m. by mistake.
+        const dt = g.kickoff ? new Date(g.kickoff) : new Date(`${g.date}T23:59:59-04:00`);
         return Date.now() >= dt.getTime();
       };
 
@@ -1148,11 +1168,16 @@
 
       // Debounced auto-persist when managers change and toggle is enabled
       useEffect(() => {
-        if (!autoPersist) return;
+        if (!autoPersist || !gistSeasonReady) return;
         const id = (gistIdState || localStorage.getItem('gistId') || '').trim();
         const token = (localStorage.getItem('gistToken') || '').trim();
         if (!id || !token) return;
-        const payloadObj = { managers, lastUpdated: new Date().toISOString() };
+        const payloadObj = {
+          season: SEASON_YEAR,
+          managers,
+          gameResults,
+          lastUpdated: new Date().toISOString()
+        };
         const payloadStr = JSON.stringify(payloadObj, null, 2);
         if (lastSavedHashRef.current === payloadStr) return;
         if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
@@ -1166,7 +1191,7 @@
             saveDebounceRef.current = null;
           }
         };
-      }, [managers, autoPersist, gistIdState]);
+      }, [managers, gameResults, autoPersist, gistIdState, gistSeasonReady]);
       // Initialize mobile/desktop defaults for expansions and chart section ONCE after data loads
       useEffect(() => {
         if (initViewApplied.current) return;
@@ -1504,11 +1529,15 @@
                 )}
               </div>
               <div className="flex items-center gap-3">
-                <label className="hidden sm:flex items-center gap-2 text-xs select-none" title="Automatically save live results to your configured Gist">
+                <label
+                  className={`hidden sm:flex items-center gap-2 text-xs select-none ${gistSeasonReady ? '' : 'opacity-60'}`}
+                  title={gistSeasonReady ? 'Automatically save live results to your configured Gist' : `Initialize the ${SEASON_YEAR} Gist from the admin page first`}
+                >
                   <input
                     type="checkbox"
                     checked={autoPersist}
                     onChange={(e) => setAutoPersist(e.target.checked)}
+                    disabled={!gistSeasonReady}
                     aria-label="Enable auto-save to Gist"
                     className="h-4 w-4 rounded border-purple-400 bg-transparent"
                   />
@@ -1567,7 +1596,7 @@
           <header className="text-center py-6 animate-fade-in">
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold flex items-center justify-center gap-3 drop-shadow-lg">
               <span className="animate-trophy">🏆</span>
-              HowBoutIt Preseason Survivor Pool
+              {SEASON_YEAR} HowBoutIt Preseason Survivor Pool
             </h1>
             <p className="mt-2 text-base sm:text-lg md:text-xl">Who is going to get the #1 Fucking Pick?!</p>
             <div className="mt-2 text-xs text-purple-200">
@@ -1952,7 +1981,7 @@
           {/* Preseason Schedule */}
           <section className="glass rounded-2xl p-5 overflow-auto animate-fade-in">
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <i className="fas fa-calendar-alt"></i> Preseason Schedule (Weeks 1–3)
+              <i className="fas fa-calendar-alt"></i> {SEASON_YEAR} Preseason Schedule (Weeks 1–3)
             </h2>
             {/* Desktop table */}
             <div className="hidden md:block overflow-x-auto">
@@ -2400,7 +2429,7 @@
 
           {/* Footer */}
           <footer className="text-center py-6 text-sm text-purple-300 border-t border-white/10">
-            <p>NFL Preseason Survivor Pool • Draft order determined by survival and margin of victory</p>
+            <p>{SEASON_YEAR} NFL Preseason Survivor Pool • Draft order determined by survival and margin of victory</p>
             <p className="mt-1">Admin: <a href="admin.html" className="text-purple-200 hover:text-white">Manage Pool</a></p>
           </footer>
         </div>

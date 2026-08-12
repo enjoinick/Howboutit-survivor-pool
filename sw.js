@@ -1,5 +1,5 @@
 /* Minimal service worker for installability and basic offline support */
-const CACHE_NAME = 'survivor-pool-v1-20250819a';
+const CACHE_NAME = 'survivor-pool-v2-20260810';
 const ASSETS = [
   './',
   './index.html',
