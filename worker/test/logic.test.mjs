@@ -70,6 +70,28 @@ test('an accepted pick advances exactly one turn', () => {
   assert.equal(result.queue.entries[1].status, 'current');
 });
 
+test('an accepted pick clears stale result state from an empty slot', () => {
+  const pool = buildData();
+  pool.managers[0].picks[0] = {
+    week: 1,
+    team: '',
+    result: 'W',
+    margin: 14,
+    manualResult: true,
+    submittedAt: '2025-08-01T00:00:00.000Z'
+  };
+  const result = applySubmission(pool, {
+    manager: 'Weston',
+    week: 1,
+    team: 'Jacksonville Jaguars'
+  }, beforeDeadline);
+  const pick = result.data.managers[0].picks[0];
+  assert.equal(pick.result, null);
+  assert.equal(pick.margin, 0);
+  assert.equal(pick.manualResult, false);
+  assert.equal(pick.submittedAt, beforeDeadline.toISOString());
+});
+
 test('out-of-order submissions are rejected', () => {
   assert.throws(
     () => applySubmission(buildData(), { manager: 'Jordan', week: 1, team: 'Buffalo Bills' }, beforeDeadline),

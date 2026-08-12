@@ -214,6 +214,8 @@ export const applySubmission = (data, submission, now = new Date()) => {
   const submittedAt = (now instanceof Date ? now : new Date(now)).toISOString();
   pick.team = team;
   pick.result = null;
+  pick.margin = 0;
+  pick.manualResult = false;
   pick.submittedBy = 'public-pick-queue';
   pick.submittedAt = submittedAt;
   pick.lastUpdated = submittedAt;

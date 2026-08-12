@@ -36,6 +36,16 @@ const submissionRequest = (manager, team) => new Request('https://worker.example
   body: JSON.stringify({ manager, week: 1, team })
 });
 
+const adminSaveRequest = (baseline, nextData) => new Request('https://worker.example/admin-save', {
+  method: 'POST',
+  headers: {
+    Origin: 'https://enjoinick.github.io',
+    Authorization: 'Bearer test-token',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ gistId: 'test-gist', baseline, data: nextData })
+});
+
 test('coordinator serializes simultaneous valid turns against the latest Gist state', async () => {
   let liveData = buildData();
   const originalFetch = globalThis.fetch;
@@ -122,6 +132,72 @@ test('coordinator rejects the same team for consecutive managers', async () => {
     assert.equal(jordanResponse.status, 409);
     assert.equal(payload.error, 'team_taken_this_week');
     assert.equal(liveData.managers[1].picks[0].team, '');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a public pick landing before an admin save causes a safe conflict instead of data loss', async () => {
+  const baseline = buildData();
+  let liveData = structuredClone(baseline);
+  const adminData = structuredClone(baseline);
+  adminData.managers[0].teamLabel = 'Commissioner Edit';
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options = {}) => {
+    if ((options.method || 'GET') === 'PATCH') {
+      const payload = JSON.parse(options.body);
+      liveData = JSON.parse(payload.files['data.json'].content);
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      files: { 'data.json': { content: JSON.stringify(liveData), truncated: false } }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const coordinator = new PickQueueCoordinator({}, env);
+    const [pickResponse, saveResponse] = await Promise.all([
+      coordinator.fetch(submissionRequest('Weston', 'Jacksonville Jaguars')),
+      coordinator.fetch(adminSaveRequest(baseline, adminData))
+    ]);
+    const savePayload = await saveResponse.json();
+    assert.equal(pickResponse.status, 201);
+    assert.equal(saveResponse.status, 409);
+    assert.equal(savePayload.error, 'live_data_changed');
+    assert.equal(liveData.managers[0].picks[0].team, 'Jacksonville Jaguars');
+    assert.notEqual(liveData.managers[0].teamLabel, 'Commissioner Edit');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a public pick landing after an admin save retains the commissioner edit', async () => {
+  const baseline = buildData();
+  let liveData = structuredClone(baseline);
+  const adminData = structuredClone(baseline);
+  adminData.managers[0].teamLabel = 'Commissioner Edit';
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options = {}) => {
+    if ((options.method || 'GET') === 'PATCH') {
+      const payload = JSON.parse(options.body);
+      liveData = JSON.parse(payload.files['data.json'].content);
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      files: { 'data.json': { content: JSON.stringify(liveData), truncated: false } }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const coordinator = new PickQueueCoordinator({}, env);
+    const [saveResponse, pickResponse] = await Promise.all([
+      coordinator.fetch(adminSaveRequest(baseline, adminData)),
+      coordinator.fetch(submissionRequest('Weston', 'Jacksonville Jaguars'))
+    ]);
+    assert.equal(saveResponse.status, 200);
+    assert.equal(pickResponse.status, 201);
+    assert.equal(liveData.managers[0].teamLabel, 'Commissioner Edit');
+    assert.equal(liveData.managers[0].picks[0].team, 'Jacksonville Jaguars');
   } finally {
     globalThis.fetch = originalFetch;
   }

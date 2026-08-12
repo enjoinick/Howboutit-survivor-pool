@@ -763,7 +763,7 @@
               
               // Calculate margins and results for managers' picks
               if (data.events && data.events.length > 0) {
-                calculateAndUpdateFromScores(data.events);
+                calculateAndUpdateFromScores(data.events, activeWeek);
               }
             }
           } catch (err) {
@@ -773,7 +773,7 @@
         }
         
         // Calculate margins and results based on game scores
-        const calculateAndUpdateFromScores = (games) => {
+        const calculateAndUpdateFromScores = (games, poolWeek) => {
           const updatedManagers = managers.map(manager => {
             let newMarginOfVictory = 0;
             let hasUpdatedPick = false;
@@ -781,6 +781,9 @@
             
             // Check each week's pick
             manager.picks.forEach((pick, weekIndex) => {
+              // The fetched scoreboard contains exactly one ESPN preseason week.
+              // Never apply those games to stored picks from another pool week.
+              if (Number(pick && pick.week) !== Number(poolWeek)) return;
               if (pick.team) {
                 // Find the game involving this team
                 const game = games.find(g => {
@@ -813,7 +816,7 @@
                     let result = null;
                     if (margin > 0) result = 'W';
                     else if (margin < 0) result = 'L';
-                    else result = null; // tie -> no W/L
+                    else result = 'T';
                     
                     // Only auto-update if the game is completed and this pick is not a manual override
                     if (status === 'post' && !pick.manualResult) {
@@ -823,7 +826,7 @@
                         manualResult: false, // Mark as automatic result
                         lastUpdated: new Date().toISOString()
                       };
-                      if (result !== null) nextPick.result = result; else delete nextPick.result;
+                      nextPick.result = result;
                       if (pick.result !== result || pick.margin !== margin) {
                         newPicks[weekIndex] = nextPick;
                         hasUpdatedPick = true;
@@ -1767,20 +1770,20 @@
                           key={idx}
                           className={(function(){
                             const outcome = pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null;
-                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? 'T' : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
                             const base = 'px-2 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-medium flex items-center gap-1 whitespace-nowrap ';
                             if (effective === 'W') return base + 'bg-green-500/80';
                             if (effective === 'L') return base + 'bg-red-500/80';
+                            if (effective === 'T') return base + 'bg-amber-500/80';
                             return base + 'bg-gray-700/60';
                           })()}
                           title={(function(){
                             const outcome = pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null;
-                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? 'T' : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
                             let resText = 'Pending';
-                            if (effective) resText = (effective === 'W' ? 'Win' : 'Loss');
-                            else if (outcome && outcome.state === 'post' && outcome.isTie) resText = 'Tie';
+                            if (effective) resText = effective === 'W' ? 'Win' : effective === 'L' ? 'Loss' : 'Tie';
                             const liveSuffix = (!pick.result && liveResult) ? ' (Live)' : '';
                             const manualSuffix = pick.manualResult ? ' (Manual override)' : '';
                             // Append stored note if available
@@ -1800,12 +1803,12 @@
                           })()}
                           {(function(){
                             const outcome = pick.team ? getTeamOutcomeForWeek(pick.team, pick.week) : null;
-                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? null : (outcome.isWinner ? 'W' : 'L')) : null;
+                            const liveResult = outcome && outcome.state === 'post' ? (outcome.isTie ? 'T' : (outcome.isWinner ? 'W' : 'L')) : null;
                             const effective = pick.result || liveResult;
                             if (!effective) return null;
                             return (
                               <span className="font-bold">
-                                {effective === 'W' ? '✓' : '✗'}
+                                {effective === 'W' ? '✓' : effective === 'L' ? '✗' : '–'}
                               </span>
                             );
                           })()}
@@ -2005,7 +2008,7 @@
                         // Check if any manager has a completed result for either team in this week
                         const completedPicks = managersWithPick.filter(mgr => {
                           const pick = mgr.picks.find(p => p.week === week.week);
-                          return pick && (pick.result === 'W' || pick.result === 'L') && pick.margin !== undefined;
+                          return pick && (pick.result === 'W' || pick.result === 'L' || pick.result === 'T') && pick.margin !== undefined;
                         });
                         
                         if (completedPicks.length > 0) {
@@ -2048,9 +2051,9 @@
                                   
                                   // Check live outcome first, then fallback to stored result
                                   if (outcome && outcome.state === 'post') {
-                                    cls = outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
-                                  } else if (pick && (pick.result === 'W' || pick.result === 'L')) {
-                                    cls = pick.result === 'W' ? 'bg-green-500/60' : 'bg-red-500/60';
+                                    cls = outcome.isTie ? 'bg-amber-500/60' : outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
+                                  } else if (pick && (pick.result === 'W' || pick.result === 'L' || pick.result === 'T')) {
+                                    cls = pick.result === 'W' ? 'bg-green-500/60' : pick.result === 'L' ? 'bg-red-500/60' : 'bg-amber-500/60';
                                   }
                                   
                                   return (
@@ -2122,7 +2125,7 @@
                             // Check if any manager has a completed result for either team in this week
                             const completedPicks = managersWithPick.filter(mgr => {
                               const pick = mgr.picks.find(p => p.week === week.week);
-                              return pick && (pick.result === 'W' || pick.result === 'L') && pick.margin !== undefined;
+                              return pick && (pick.result === 'W' || pick.result === 'L' || pick.result === 'T') && pick.margin !== undefined;
                             });
                             
                             if (completedPicks.length > 0) {
@@ -2161,9 +2164,9 @@
                                     
                                     // Check live outcome first, then fallback to stored result
                                     if (outcome && outcome.state === 'post') {
-                                      cls = outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
-                                    } else if (pick && (pick.result === 'W' || pick.result === 'L')) {
-                                      cls = pick.result === 'W' ? 'bg-green-500/60' : 'bg-red-500/60';
+                                      cls = outcome.isTie ? 'bg-amber-500/60' : outcome.isWinner ? 'bg-green-500/60' : 'bg-red-500/60';
+                                    } else if (pick && (pick.result === 'W' || pick.result === 'L' || pick.result === 'T')) {
+                                      cls = pick.result === 'W' ? 'bg-green-500/60' : pick.result === 'L' ? 'bg-red-500/60' : 'bg-amber-500/60';
                                     }
                                     
                                     return (

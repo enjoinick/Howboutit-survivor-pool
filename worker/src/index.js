@@ -36,19 +36,28 @@ const assertAllowedOrigin = (request, env) => {
   }
 };
 
-const githubHeaders = (env) => ({
+const assertAdminToken = (request) => {
+  const authorization = String(request.headers.get('Authorization') || '');
+  const token = authorization.replace(/^Bearer\s+/i, '').trim();
+  if (!token) {
+    throw new QueueError(401, 'admin_unauthorized', 'The admin save token is invalid.');
+  }
+  return token;
+};
+
+const githubHeaders = (env, token = env.GIST_TOKEN) => ({
   Accept: 'application/vnd.github+json',
-  Authorization: `Bearer ${env.GIST_TOKEN}`,
+  Authorization: `Bearer ${token}`,
   'User-Agent': 'howboutit-pick-queue',
   'X-GitHub-Api-Version': '2026-03-10'
 });
 
-const readPoolData = async (env) => {
-  if (!env.GIST_ID || !env.GIST_TOKEN) {
+const readPoolData = async (env, token = env.GIST_TOKEN) => {
+  if (!env.GIST_ID || !token) {
     throw new QueueError(503, 'worker_not_configured', 'The pick service is not configured yet.');
   }
   const response = await fetch(`https://api.github.com/gists/${env.GIST_ID}`, {
-    headers: githubHeaders(env),
+    headers: githubHeaders(env, token),
     cache: 'no-store'
   });
   if (!response.ok) {
@@ -66,11 +75,11 @@ const readPoolData = async (env) => {
   }
 };
 
-const writePoolData = async (env, data) => {
+const writePoolData = async (env, data, token = env.GIST_TOKEN) => {
   const response = await fetch(`https://api.github.com/gists/${env.GIST_ID}`, {
     method: 'PATCH',
     headers: {
-      ...githubHeaders(env),
+      ...githubHeaders(env, token),
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -107,8 +116,42 @@ export class PickQueueCoordinator {
 
   async handle(request) {
     const url = new URL(request.url);
-    if (url.pathname !== '/pick-queue') {
+    if (url.pathname !== '/pick-queue' && url.pathname !== '/admin-save') {
       return json({ error: 'not_found', message: 'Route not found.' }, 404);
+    }
+
+    if (url.pathname === '/admin-save') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method_not_allowed', message: 'Method not allowed.' }, 405, { Allow: 'POST, OPTIONS' });
+      }
+      assertAllowedOrigin(request, this.env);
+      const adminToken = assertAdminToken(request);
+      const contentType = request.headers.get('Content-Type') || '';
+      if (!contentType.toLowerCase().includes('application/json')) {
+        throw new QueueError(415, 'json_required', 'Send the admin save as JSON.');
+      }
+
+      let saveRequest;
+      try {
+        saveRequest = await request.json();
+      } catch {
+        throw new QueueError(400, 'invalid_json', 'The admin save request is invalid.');
+      }
+      const baseline = saveRequest && saveRequest.baseline;
+      const nextData = saveRequest && saveRequest.data;
+      if (!baseline || !nextData || !Array.isArray(nextData.managers) || !nextData.pickQueue) {
+        throw new QueueError(422, 'invalid_pool_data', 'The admin save is missing required pool data.');
+      }
+      if (String(saveRequest.gistId || '') !== String(this.env.GIST_ID || '')) {
+        throw new QueueError(422, 'wrong_gist', 'The admin page is configured for a different Gist.');
+      }
+
+      const liveData = await readPoolData(this.env, adminToken);
+      if (JSON.stringify(liveData) !== JSON.stringify(baseline)) {
+        throw new QueueError(409, 'live_data_changed', 'The live pool changed after the admin page loaded. Reload before saving.');
+      }
+      await writePoolData(this.env, nextData, adminToken);
+      return json({ saved: true, lastUpdated: nextData.lastUpdated || null });
     }
 
     if (request.method === 'GET') {
@@ -152,7 +195,7 @@ export default {
         headers: {
           ...cors,
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Max-Age': '86400'
         }
       });
@@ -163,7 +206,7 @@ export default {
       if (url.pathname === '/health') {
         return json({ status: 'ok', service: 'howboutit-pick-queue' }, 200, cors);
       }
-      if (url.pathname !== '/pick-queue') {
+      if (url.pathname !== '/pick-queue' && url.pathname !== '/admin-save') {
         return json({ error: 'not_found', message: 'Route not found.' }, 404, cors);
       }
       const id = env.PICK_QUEUE.idFromName(`season-${env.SEASON || '2026'}`);
