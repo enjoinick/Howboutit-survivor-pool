@@ -26,12 +26,14 @@ const findWeekPick = (manager, week) =>
   (Array.isArray(manager && manager.picks) ? manager.picks : [])
     .find((pick) => Number(pick && pick.week) === Number(week));
 
-const normalizeOrder = (data) => {
+const normalizeOrder = (data, week) => {
   const managers = Array.isArray(data && data.managers) ? data.managers : [];
   const managersByKey = new Map(managers.map((manager) => [managerKey(manager.name), manager]));
-  const configured = Array.isArray(data && data.pickQueue && data.pickQueue.order)
-    ? data.pickQueue.order
-    : [];
+  const queue = data && data.pickQueue || {};
+  const weekOrder = queue.orders && queue.orders[String(week)];
+  const configured = Array.isArray(weekOrder)
+    ? weekOrder
+    : (Array.isArray(queue.order) ? queue.order : []);
   const ordered = [];
   const seen = new Set();
 
@@ -75,7 +77,7 @@ export const deriveQueueState = (data, now = new Date()) => {
   const nowTimestamp = now instanceof Date ? now.getTime() : new Date(now).getTime();
   const deadlineTimestamp = deadline ? Date.parse(deadline) : null;
   const locked = Boolean(deadlineTimestamp && Number.isFinite(nowTimestamp) && nowTimestamp >= deadlineTimestamp);
-  const orderedManagers = normalizeOrder(data);
+  const orderedManagers = normalizeOrder(data, activeWeek);
   const eligibleManagers = orderedManagers.filter((manager) => !(manager.eliminated === true && manager.buyback !== true));
   const firstWaitingIndex = eligibleManagers.findIndex((manager) => {
     const pick = findWeekPick(manager, activeWeek);

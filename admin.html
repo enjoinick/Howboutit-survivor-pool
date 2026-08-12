@@ -183,12 +183,22 @@
           season: { type: 'integer', const: SEASON_YEAR },
           pickQueue: {
             type: 'object',
-            required: ['enabled', 'activeWeek', 'order', 'deadlines'],
+            required: ['enabled', 'activeWeek', 'orders', 'deadlines'],
             additionalProperties: true,
             properties: {
               enabled: { type: 'boolean' },
               activeWeek: { type: 'integer', minimum: 1, maximum: 3 },
               order: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string', minLength: 1 } },
+              orders: {
+                type: 'object',
+                required: ['1', '2', '3'],
+                additionalProperties: {
+                  type: 'array',
+                  minItems: 1,
+                  uniqueItems: true,
+                  items: { type: 'string', minLength: 1 }
+                }
+              },
               deadlines: { type: 'object', additionalProperties: { type: 'string' } }
             }
           },
@@ -268,24 +278,32 @@
         });
 
         const queue = data && data.pickQueue;
-        if (queue && Array.isArray(queue.order)) {
+        if (queue) {
           const managerNames = new Set(poolManagers.map((manager) => String(manager && manager.name || '').trim().toLowerCase()));
-          const queueNames = new Set();
-          queue.order.forEach((name, index) => {
-            const key = String(name || '').trim().toLowerCase();
-            if (!managerNames.has(key)) {
-              errors.push({ instancePath: `/pickQueue/order/${index}`, message: `references unknown manager ${name}` });
-            }
-            if (queueNames.has(key)) {
-              errors.push({ instancePath: `/pickQueue/order/${index}`, message: `duplicates manager ${name}` });
-            }
-            queueNames.add(key);
-          });
-          poolManagers.forEach((manager) => {
-            const name = String(manager && manager.name || '').trim();
-            if (name && !queueNames.has(name.toLowerCase())) {
-              errors.push({ instancePath: '/pickQueue/order', message: `is missing manager ${name}` });
-            }
+          const orders = queue.orders && typeof queue.orders === 'object'
+            ? Object.entries(queue.orders)
+            : (Array.isArray(queue.order) ? [['default', queue.order]] : []);
+          orders.forEach(([week, order]) => {
+            if (!Array.isArray(order)) return;
+            const queueNames = new Set();
+            order.forEach((name, index) => {
+              const key = String(name || '').trim().toLowerCase();
+              const path = week === 'default' ? `/pickQueue/order/${index}` : `/pickQueue/orders/${week}/${index}`;
+              if (!managerNames.has(key)) {
+                errors.push({ instancePath: path, message: `references unknown manager ${name}` });
+              }
+              if (queueNames.has(key)) {
+                errors.push({ instancePath: path, message: `duplicates manager ${name}` });
+              }
+              queueNames.add(key);
+            });
+            poolManagers.forEach((manager) => {
+              const name = String(manager && manager.name || '').trim();
+              if (name && !queueNames.has(name.toLowerCase())) {
+                const path = week === 'default' ? '/pickQueue/order' : `/pickQueue/orders/${week}`;
+                errors.push({ instancePath: path, message: `is missing manager ${name}` });
+              }
+            });
           });
         }
 
@@ -558,6 +576,11 @@
             enabled: false,
             activeWeek: 1,
             order: fallbackOrder,
+            orders: {
+              '1': fallbackOrder,
+              '2': fallbackOrder,
+              '3': fallbackOrder
+            },
             deadlines: {},
             ...(completeData.pickQueue || {}),
             ...changes
@@ -823,10 +846,16 @@
         enabled: false,
         activeWeek: 1,
         order: fallbackQueueOrder,
+        orders: {
+          '1': fallbackQueueOrder,
+          '2': fallbackQueueOrder,
+          '3': fallbackQueueOrder
+        },
         deadlines: {},
         ...(completeData.pickQueue || {})
       };
       const activeQueueDeadline = pickQueueConfig.deadlines && pickQueueConfig.deadlines[String(pickQueueConfig.activeWeek)];
+      const activeQueueOrder = (pickQueueConfig.orders && pickQueueConfig.orders[String(pickQueueConfig.activeWeek)]) || pickQueueConfig.order || fallbackQueueOrder;
       
       return (
         <div className="min-h-screen p-4">
@@ -986,16 +1015,21 @@
               </div>
               <div className="mt-5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
-                  <span className="text-sm font-semibold">Turn order</span>
+                  <span className="text-sm font-semibold">Week {pickQueueConfig.activeWeek} turn order</span>
                   <button
-                    onClick={() => updatePickQueue({ order: fallbackQueueOrder })}
+                    onClick={() => updatePickQueue({
+                      orders: {
+                        ...(pickQueueConfig.orders || {}),
+                        [String(pickQueueConfig.activeWeek)]: fallbackQueueOrder
+                      }
+                    })}
                     className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm"
                   >
-                    Use 2025 tiebreak order
+                    Use tiebreak order for Week {pickQueueConfig.activeWeek}
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {pickQueueConfig.order.map((name, index) => (
+                  {activeQueueOrder.map((name, index) => (
                     <span key={`${name}-${index}`} className="px-3 py-1 rounded-full bg-purple-600/40 border border-purple-300/20 text-sm">
                       {index + 1}. {name}
                     </span>
