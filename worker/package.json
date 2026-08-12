@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/logic.test.mjs test/coordinator.test.mjs test/ranking.test.mjs",
-    "check": "node --check src/index.js && node --check src/logic.js && node --check ../ranking.js",
+    "test": "node --test test/logic.test.mjs test/coordinator.test.mjs test/ranking.test.mjs test/admin-logic.test.mjs",
+    "check": "node --check src/index.js && node --check src/logic.js && node --check ../ranking.js && node --check ../admin-logic.js",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },

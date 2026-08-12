@@ -10,6 +10,7 @@
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
   <script src="ranking.js"></script>
+  <script src="admin-logic.js"></script>
   <!-- Babel Standalone enables JSX in the browser -->
   <script src="https://unpkg.com/@babel/standalone@7.28.5/babel.min.js" integrity="sha384-mP9sW+eK08VvAmlxEkn9Kn6egvKFtnFEfW7/u9feUWAIoTvnYAzT4NwsskP+uWUd" crossorigin="anonymous"></script>
   <!-- Font Awesome for icons -->
@@ -125,6 +126,7 @@
       const [gistId, setGistId] = useState((localStorage.getItem('gistId') || '').trim());
       // The token is intentionally session-only and is cleared after each save.
       const [gistToken, setGistToken] = useState('');
+      const [pickQueueApiBase, setPickQueueApiBase] = useState('');
       const [dataSource, setDataSource] = useState('loading');
       const [isSaving, setIsSaving] = useState(false);
       const [dirty, setDirty] = useState(false);
@@ -133,6 +135,10 @@
       const [showSavePreview, setShowSavePreview] = useState(false);
       const [diffLines, setDiffLines] = useState([]);
       const [validationErrors, setValidationErrors] = useState([]);
+      const [saveConflict, setSaveConflict] = useState('');
+      const [pendingSaveData, setPendingSaveData] = useState(null);
+      const [isFinalizingWeek, setIsFinalizingWeek] = useState(false);
+      const [weekAdvanceErrors, setWeekAdvanceErrors] = useState([]);
       // File input ref for importing JSON
       const fileInputRef = useRef(null);
       
@@ -157,22 +163,24 @@
         return () => window.removeEventListener('beforeunload', warnOnUnsavedChanges);
       }, [dirty]);
 
-      // If no gistId (or whitespace) in localStorage/state, try to default from config.json
+      // Load non-secret persistence endpoints from the repository config.
       useEffect(() => {
-        if (!gistId || !gistId.trim()) {
-          fetch(`config.json?t=${Date.now()}`)
-            .then(res => res.ok ? res.json() : null)
-            .then(cfg => {
-              if (cfg && cfg.gistId) {
+        fetch(`config.json?t=${Date.now()}`)
+          .then(res => res.ok ? res.json() : null)
+          .then(cfg => {
+            if (cfg) {
+              const apiBase = cfg.features && cfg.features.pickSubmission && cfg.features.pickSubmission.apiBase;
+              if (apiBase) setPickQueueApiBase(String(apiBase).replace(/\/$/, ''));
+              if ((!gistId || !gistId.trim()) && cfg.gistId) {
                 const id = String(cfg.gistId).trim();
                 if (id) {
                   setGistId(id);
                   localStorage.setItem('gistId', id);
                 }
               }
-            })
-            .catch(() => {});
-        }
+            }
+          })
+          .catch(() => {});
       }, [gistId]);
 
       // Lightweight JSON Schema for admin validation (kept permissive to avoid blocking legitimate data)
@@ -230,7 +238,7 @@
                     properties: {
                       week: { type: 'integer' },
                       team: { type: 'string' },
-                      result: { type: ['string', 'null'], enum: ['W', 'L', null] },
+                      result: { type: ['string', 'null'], enum: ['W', 'L', 'T', null] },
                       margin: { type: ['number', 'integer'] },
                       manualResult: { type: 'boolean' },
                       lastUpdated: { type: 'string' }
@@ -250,6 +258,7 @@
         const poolManagers = Array.isArray(data && data.managers) ? data.managers : [];
         const rankOwners = new Map();
         const nameOwners = new Map();
+        const weeklyTeamOwners = new Map();
 
         poolManagers.forEach((manager, index) => {
           const name = String(manager && manager.name || '').trim();
@@ -276,10 +285,22 @@
           (Array.isArray(manager && manager.picks) ? manager.picks : []).forEach((pick, pickIndex) => {
             const team = String(pick && pick.team || '').trim();
             if (!team) return;
-            if (usedTeams.has(team)) {
+            const teamKey = team.toLowerCase();
+            if (usedTeams.has(teamKey)) {
               errors.push({ instancePath: `/managers/${index}/picks/${pickIndex}/team`, message: `reuses ${team} in another week` });
             }
-            usedTeams.add(team);
+            usedTeams.add(teamKey);
+
+            const week = Number(pick && pick.week) || pickIndex + 1;
+            const weeklyKey = `${week}:${teamKey}`;
+            if (weeklyTeamOwners.has(weeklyKey)) {
+              errors.push({
+                instancePath: `/managers/${index}/picks/${pickIndex}/team`,
+                message: `duplicates ${team} in Week ${week}; already picked by ${weeklyTeamOwners.get(weeklyKey)}`
+              });
+            } else {
+              weeklyTeamOwners.set(weeklyKey, name || `manager ${index + 1}`);
+            }
           });
         });
 
@@ -355,6 +376,8 @@
         }
         // Validate and prepare diff preview before confirming save
         const dataToSave = getDataToSave();
+        setPendingSaveData(dataToSave);
+        setSaveConflict('');
         const validation = validateAgainstSchema(dataToSave);
         if (!validation.valid) {
           setValidationErrors((validation.errors || []).map(err => `${err.instancePath || 'data'} ${err.message}`));
@@ -418,6 +441,32 @@
         setNotification({ message, type });
         setTimeout(() => setNotification(null), 3000);
       };
+
+      const fetchGistSnapshot = async (id, token = '') => {
+        const headers = { 'Accept': 'application/vnd.github+json' };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const metaRes = await fetch(`https://api.github.com/gists/${id}?t=${Date.now()}`, { headers });
+        if (!metaRes.ok) throw new Error(`Gist metadata fetch failed: ${metaRes.status}`);
+        const meta = await metaRes.json();
+        const dataFile = meta.files && (meta.files['data.json'] || meta.files['data.JSON']);
+        if (!dataFile) throw new Error('data.json not found in Gist');
+
+        let data;
+        if (typeof dataFile.content === 'string' && dataFile.truncated !== true) {
+          data = JSON.parse(dataFile.content);
+        } else {
+          if (!dataFile.raw_url) throw new Error('data.json has no readable URL');
+          const rawRes = await fetch(`${dataFile.raw_url}?t=${Date.now()}`, { headers });
+          if (!rawRes.ok) throw new Error(`Gist raw fetch failed: ${rawRes.status}`);
+          data = await rawRes.json();
+        }
+
+        return {
+          data,
+          normalized: SurvivorAdminLogic.normalizeJson(data),
+          revision: (meta.history && meta.history[0] && meta.history[0].version) || meta.updated_at || ''
+        };
+      };
       
       const loadData = async () => {
         let ignoredPriorSeasonGist = false;
@@ -425,14 +474,8 @@
         // Try Gist first if configured; otherwise fall back to local data.json
         if (gistId) {
           try {
-            const metaRes = await fetch(`https://api.github.com/gists/${gistId}`);
-            if (!metaRes.ok) throw new Error(`Gist metadata fetch failed: ${metaRes.status}`);
-            const meta = await metaRes.json();
-            const dataFile = meta.files && (meta.files['data.json'] || meta.files['data.JSON']);
-            if (!dataFile || !dataFile.raw_url) throw new Error('data.json not found in Gist');
-            const res = await fetch(`${dataFile.raw_url}?t=${Date.now()}`);
-            if (!res.ok) throw new Error(`Gist raw fetch failed: ${res.status}`);
-            const data = await res.json();
+            const snapshot = await fetchGistSnapshot(gistId);
+            const data = snapshot.data;
             if (!isCurrentSeasonData(data)) {
               ignoredPriorSeasonGist = true;
               const mismatchError = new Error(`Ignoring non-${SEASON_YEAR} Gist data`);
@@ -441,10 +484,13 @@
             }
             setManagers(data.managers || []);
             setCompleteData(data);
-            setJsonData(JSON.stringify(data, null, 2));
-            setBaselineJson(JSON.stringify(data, null, 2));
+            setJsonData(snapshot.normalized);
+            setBaselineJson(snapshot.normalized);
             setDataSource('gist');
             setDirty(false);
+            setSaveConflict('');
+            setPendingSaveData(null);
+            setWeekAdvanceErrors([]);
             return;
           } catch (err) {
             if (err && err.code === 'season_mismatch') {
@@ -466,6 +512,9 @@
           setBaselineJson(JSON.stringify(data, null, 2));
           setDataSource('repository');
           setDirty(false);
+          setSaveConflict('');
+          setPendingSaveData(null);
+          setWeekAdvanceErrors([]);
           if (ignoredPriorSeasonGist) {
             showNotification(`Loaded ${SEASON_YEAR} starter data; last season's Gist was left untouched`, 'success');
           }
@@ -476,35 +525,59 @@
         }
       };
       
-      const syncComputedManagerState = (poolManagers) => poolManagers.map((manager) => {
-        const standing = SurvivorRanking.analyzeManager(manager, {
-          totalWeeks: 3,
-          throughWeek: 3,
-          activeWeek: Number((completeData.pickQueue && completeData.pickQueue.activeWeek) || 1)
-        });
-        return {
-          ...manager,
-          eliminated: standing.isEliminated,
-          marginOfVictory: standing.totalMargin,
-          ...(standing.eliminationWeek ? { eliminationWeek: standing.eliminationWeek } : { eliminationWeek: null })
-        };
-      });
+      const syncComputedManagerState = (poolManagers) => SurvivorAdminLogic.syncComputedManagers(
+        poolManagers,
+        Number((completeData.pickQueue && completeData.pickQueue.activeWeek) || 1)
+      );
+
+      const getTeamConflict = (managerIndex, weekIndex, team) => {
+        if (!team) return null;
+        const manager = managers[managerIndex];
+        const week = Number(manager && manager.picks && manager.picks[weekIndex] && manager.picks[weekIndex].week) || weekIndex + 1;
+        const reusedByManager = (manager && Array.isArray(manager.picks) ? manager.picks : [])
+          .some((pick, index) => index !== weekIndex && pick.team === team);
+        if (reusedByManager) return 'another-week';
+        const weeklyOwner = managers.find((candidate, index) => index !== managerIndex
+          && (Array.isArray(candidate && candidate.picks) ? candidate.picks : [])
+            .some((pick) => Number(pick && pick.week) === week && pick.team === team));
+        return weeklyOwner ? { type: 'same-week', manager: weeklyOwner.name, week } : null;
+      };
 
       const handlePickChange = (managerIndex, weekIndex, value) => {
-        // Prevent duplicate team picks for the same manager
-        if (value && managers[managerIndex].picks.some((p, idx) => idx !== weekIndex && p.team === value)) {
+        const currentPick = managers[managerIndex] && managers[managerIndex].picks
+          && managers[managerIndex].picks[weekIndex];
+        if (String(currentPick && currentPick.team || '') === value) return;
+        const conflict = getTeamConflict(managerIndex, weekIndex, value);
+        if (conflict === 'another-week') {
           showNotification('This team is already used in another week for this manager', 'error');
           return;
         }
+        if (conflict && conflict.type === 'same-week') {
+          showNotification(`${value} is already picked by ${conflict.manager} for Week ${conflict.week}`, 'error');
+          return;
+        }
         const updatedManagers = structuredClone(managers);
+        const {
+          result: _oldResult,
+          margin: _oldMargin,
+          submittedAt: _oldSubmittedAt,
+          submittedBy: _oldSubmittedBy,
+          manualResult: _oldManualResult,
+          lastUpdated: _oldLastUpdated,
+          ...pickIdentity
+        } = updatedManagers[managerIndex].picks[weekIndex];
         updatedManagers[managerIndex].picks[weekIndex] = {
-          ...updatedManagers[managerIndex].picks[weekIndex],
+          ...pickIdentity,
           team: value,
-          manualResult: true, // Mark as manual when team is changed
+          result: null,
+          margin: 0,
+          manualTeam: true,
+          manualResult: false,
           lastUpdated: new Date().toISOString()
         };
-        setManagers(updatedManagers);
-        updateJsonData(updatedManagers);
+        const computedManagers = syncComputedManagerState(updatedManagers);
+        setManagers(computedManagers);
+        updateJsonData(computedManagers);
       };
       
       const handleResultChange = (managerIndex, weekIndex, value) => {
@@ -512,7 +585,7 @@
         updatedManagers[managerIndex].picks[weekIndex] = {
           ...updatedManagers[managerIndex].picks[weekIndex],
           result: value,
-          manualResult: true, // Mark as manual result
+          manualResult: value !== null,
           lastUpdated: new Date().toISOString()
         };
         
@@ -600,6 +673,70 @@
         setDirty(true);
       };
 
+      const handleActiveWeekSelection = (requestedWeek) => {
+        const currentWeek = Number((completeData.pickQueue && completeData.pickQueue.activeWeek) || 1);
+        if (Number(requestedWeek) === currentWeek) return;
+        setWeekAdvanceErrors([
+          Number(requestedWeek) > currentWeek
+            ? `Week ${currentWeek} must be finalized before Week ${requestedWeek} can open.`
+            : 'Moving the queue backward is blocked because it can reopen completed picks. Use a reviewed JSON import for emergency recovery.'
+        ]);
+        showNotification('Use the guarded week-finalization control', 'error');
+      };
+
+      const finalizeActiveWeek = async () => {
+        const activeWeek = Number((completeData.pickQueue && completeData.pickQueue.activeWeek) || 1);
+        if (completeData.pickQueue && completeData.pickQueue.completed === true) {
+          showNotification('The pool is already finalized', 'error');
+          return;
+        }
+        const espnWeek = Math.min(4, Math.max(2, activeWeek + 1));
+        setIsFinalizingWeek(true);
+        setWeekAdvanceErrors([]);
+        try {
+          const scoreboardUrl = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${SEASON_YEAR}&seasontype=1&week=${espnWeek}&limit=100`;
+          const response = await fetch(scoreboardUrl);
+          if (!response.ok) throw new Error(`ESPN scoreboard fetch failed: ${response.status}`);
+          const scoreboard = await response.json();
+          const timestamp = new Date().toISOString();
+          const result = SurvivorAdminLogic.finalizePoolWeek(
+            { ...completeData, season: SEASON_YEAR, managers },
+            scoreboard.events || [],
+            activeWeek,
+            timestamp
+          );
+
+          if (result.finalized || result.updatedPicks > 0) {
+            setManagers(result.data.managers);
+            setCompleteData(result.data);
+            setJsonData(JSON.stringify(result.data, null, 2));
+            setDirty(true);
+          }
+
+          if (!result.finalized) {
+            setWeekAdvanceErrors(result.errors);
+            const stagedSuffix = result.updatedPicks > 0 ? ` ${result.updatedPicks} final result${result.updatedPicks === 1 ? '' : 's'} were staged.` : '';
+            showNotification(`Week ${activeWeek} is not ready to finalize.${stagedSuffix}`, 'error');
+            return;
+          }
+
+          setWeekAdvanceErrors([]);
+          if (result.advanced) {
+            showNotification(`Week ${activeWeek} finalized. Week ${result.nextWeek} is staged with the queue closed.`, 'success');
+          } else if (result.survivorCount === 0) {
+            showNotification(`Week ${activeWeek} finalized. Everyone was eliminated, so the pool is complete.`, 'success');
+          } else {
+            showNotification('Week 3 finalized and the public queue is closed.', 'success');
+          }
+        } catch (err) {
+          console.error('Week finalization failed:', err);
+          setWeekAdvanceErrors(['Could not retrieve the official preseason scoreboard. Nothing was advanced; try again shortly.']);
+          showNotification('Week finalization failed; the active week was not changed', 'error');
+        } finally {
+          setIsFinalizingWeek(false);
+        }
+      };
+
       // Copy current JSON to clipboard
       const copyJson = async () => {
         try {
@@ -661,39 +798,53 @@
           console.warn('Save to Gist blocked: missing credentials', { hasId: !!id, hasToken: !!token });
           setShowSettings(true);
           showNotification('Configure Gist ID and Token in Settings first', 'error');
-          return;
+          return false;
         }
         try {
           setIsSaving(true);
+          setSaveConflict('');
           console.log('Saving to Gist...', { id: id.slice(0,4) + '...' + id.slice(-4) });
-          
-          // Ensure we save the complete data structure including gameResults
-          const dataToSave = getDataToSave();
-          
-          const payload = {
-            files: {
-              'data.json': { content: JSON.stringify(dataToSave, null, 2) }
-            }
-          };
-          const res = await fetch(`https://api.github.com/gists/${id}`, {
-            method: 'PATCH',
+
+          // Save the exact document shown in the confirmation preview.
+          const dataToSave = pendingSaveData || getDataToSave();
+          if (!pickQueueApiBase) throw new Error('Pick queue service URL is unavailable');
+          const res = await fetch(`${pickQueueApiBase}/admin-save`, {
+            method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `token ${token}`
+              'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+              gistId: id,
+              baseline: baselineJson ? JSON.parse(baselineJson) : null,
+              data: dataToSave
+            })
           });
           if (!res.ok) {
-            const t = await res.text();
-            throw new Error(`Gist save failed: ${res.status} ${t}`);
+            const failure = await res.json().catch(() => ({}));
+            if (res.status === 409 && failure.error === 'live_data_changed') {
+              const conflictMessage = 'The live Gist changed after this admin page loaded, likely because a pick was submitted. Your changes were not saved. Download a backup if needed, then reload and reapply them to the latest data.';
+              setSaveConflict(conflictMessage);
+              showNotification('Save blocked: newer live data was found', 'error');
+              return false;
+            }
+            throw new Error(failure.message || `Gist save failed: ${res.status}`);
           }
+          const savedJson = JSON.stringify(dataToSave, null, 2);
+          setCompleteData(dataToSave);
+          setJsonData(savedJson);
           setDirty(false);
-          setBaselineJson(JSON.stringify(dataToSave, null, 2));
+          setBaselineJson(savedJson);
+          setDataSource('gist');
+          setPendingSaveData(null);
+          setSaveConflict('');
           setGistToken('');
           showNotification('Saved to Gist successfully', 'success');
+          return true;
         } catch (err) {
           console.error(err);
-          showNotification('Failed to save to Gist. Check Settings.', 'error');
+          showNotification('Failed to verify or save the Gist. No live data was overwritten.', 'error');
+          return false;
         } finally {
           setIsSaving(false);
         }
@@ -730,11 +881,18 @@
       
       const resetPick = (managerIndex, weekIndex) => {
         const updatedManagers = structuredClone(managers);
+        const {
+          submittedAt: _oldSubmittedAt,
+          submittedBy: _oldSubmittedBy,
+          lastUpdated: _oldLastUpdated,
+          ...pickIdentity
+        } = updatedManagers[managerIndex].picks[weekIndex];
         updatedManagers[managerIndex].picks[weekIndex] = {
-          ...updatedManagers[managerIndex].picks[weekIndex],
+          ...pickIdentity,
           team: '',
           result: null,
           margin: 0,
+          manualTeam: false,
           manualResult: false,
           lastUpdated: new Date().toISOString()
         };
@@ -1007,7 +1165,7 @@
                   <label className="block text-sm mb-1">Active Week</label>
                   <select
                     value={pickQueueConfig.activeWeek}
-                    onChange={(event) => updatePickQueue({ activeWeek: Number(event.target.value) })}
+                    onChange={(event) => handleActiveWeekSelection(Number(event.target.value))}
                     className="w-full p-2 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
                     {[1, 2, 3].map((week) => <option key={week} value={week}>Week {week}</option>)}
@@ -1019,6 +1177,38 @@
                     {activeQueueDeadline ? new Date(activeQueueDeadline).toLocaleString([], { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' }) + ' ET' : 'No deadline configured'}
                   </div>
                 </div>
+              </div>
+              <div className="mt-5 rounded-xl border border-amber-300/30 bg-amber-950/20 p-4">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                  <div>
+                    <div className="font-semibold">Guarded week finalization</div>
+                    <p className="text-sm text-purple-100 mt-1">
+                      Imports official ESPN finals for Week {pickQueueConfig.activeWeek}, validates every eligible pick, recomputes eliminations and rankings, then stages the next week with the queue closed.
+                    </p>
+                  </div>
+                  <button
+                    onClick={finalizeActiveWeek}
+                    disabled={isFinalizingWeek || pickQueueConfig.completed === true}
+                    className={`shrink-0 px-4 py-2 rounded-lg font-semibold transition-colors ${isFinalizingWeek || pickQueueConfig.completed === true ? 'bg-amber-900 cursor-not-allowed opacity-70' : 'bg-amber-600 hover:bg-amber-700'}`}
+                  >
+                    <i className={`fas ${isFinalizingWeek ? 'fa-spinner fa-spin' : 'fa-flag-checkered'} mr-2`}></i>
+                    {pickQueueConfig.completed === true
+                      ? 'Pool finalized'
+                      : isFinalizingWeek
+                      ? 'Checking official finalsâ€¦'
+                      : pickQueueConfig.activeWeek < 3
+                        ? `Finalize Week ${pickQueueConfig.activeWeek} & Prepare Week ${pickQueueConfig.activeWeek + 1}`
+                        : 'Finalize Week 3 & Close Queue'}
+                  </button>
+                </div>
+                {weekAdvanceErrors.length > 0 && (
+                  <div className="mt-3 rounded-lg bg-red-600/25 border border-red-400/40 p-3">
+                    <div className="font-semibold text-red-100">Week was not advanced:</div>
+                    <ul className="list-disc pl-5 mt-1 text-sm text-red-100 max-h-40 overflow-auto">
+                      {weekAdvanceErrors.map((message, index) => <li key={index}>{message}</li>)}
+                    </ul>
+                  </div>
+                )}
               </div>
               <div className="mt-5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
@@ -1116,10 +1306,10 @@
                               <option
                                 key={team}
                                 value={team}
-                                disabled={manager.picks.some((p, idx) => idx !== weekIndex && p.team === team)}
+                                disabled={Boolean(getTeamConflict(managerIndex, weekIndex, team))}
                               >
                                 {team}
-                                {manager.picks.some((p, idx) => idx !== weekIndex && p.team === team) ? ' (used)' : ''}
+                                {getTeamConflict(managerIndex, weekIndex, team) ? ' (used)' : ''}
                               </option>
                             ))}
                           </select>
@@ -1135,6 +1325,7 @@
                             <option value="">Not decided</option>
                             <option value="W">Win</option>
                             <option value="L">Loss</option>
+                            <option value="T">Tie</option>
                           </select>
                         </div>
                         
@@ -1291,6 +1482,12 @@
                     </ul>
                   </div>
                 )}
+                {saveConflict && (
+                  <div className="mb-4 p-3 rounded bg-amber-600/30 border border-amber-300/50 text-amber-100">
+                    <div className="font-semibold mb-1">Newer live data detected</div>
+                    <p className="text-sm">{saveConflict}</p>
+                  </div>
+                )}
                 <div className="mb-4 text-sm text-purple-200">Only changed lines are highlighted.</div>
                 <div className="bg-black/40 rounded p-3 max-h-[50vh] overflow-auto text-sm font-mono whitespace-pre-wrap">
                   {diffLines.map((part, idx) => (
@@ -1309,8 +1506,8 @@
                   <button
                     onClick={async () => {
                       if (validationErrors.length === 0) {
-                        await performSaveToGist();
-                        setShowSavePreview(false);
+                        const saved = await performSaveToGist();
+                        if (saved) setShowSavePreview(false);
                       }
                     }}
                     disabled={validationErrors.length > 0 || isSaving}

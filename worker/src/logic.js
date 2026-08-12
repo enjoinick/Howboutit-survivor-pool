@@ -74,6 +74,7 @@ export const deriveQueueState = (data, now = new Date()) => {
   }
 
   const config = data.pickQueue || {};
+  const managers = data.managers;
   const activeWeek = Number(config.activeWeek || 1);
   const enabled = config.enabled === true;
   const deadline = activeDeadline(data, activeWeek);
@@ -116,12 +117,19 @@ export const deriveQueueState = (data, now = new Date()) => {
     };
   });
 
-  const usedTeams = new Set(
+  const usedByCurrentManager = new Set(
     (currentManager && Array.isArray(currentManager.picks) ? currentManager.picks : [])
       .filter((pick) => Number(pick && pick.week) !== activeWeek)
       .map((pick) => String(pick && pick.team || '').trim().toLowerCase())
       .filter(Boolean)
   );
+  const usedThisWeek = new Set(
+    managers
+      .map((manager) => findWeekPick(manager, activeWeek))
+      .map((pick) => String(pick && pick.team || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const unavailableTeams = new Set([...usedByCurrentManager, ...usedThisWeek]);
 
   return {
     season: Number(data.season),
@@ -138,7 +146,7 @@ export const deriveQueueState = (data, now = new Date()) => {
     } : null,
     entries,
     availableTeams: currentManager
-      ? NFL_TEAMS.filter((team) => !usedTeams.has(team.toLowerCase()))
+      ? NFL_TEAMS.filter((team) => !unavailableTeams.has(team.toLowerCase()))
       : [],
     lastUpdated: data.lastUpdated || null,
     lastSubmission: config.lastSubmission || null
@@ -172,8 +180,25 @@ export const applySubmission = (data, submission, now = new Date()) => {
   if (!team) {
     throw new QueueError(422, 'invalid_team', 'Choose a valid NFL team.');
   }
-  if (!state.availableTeams.includes(team)) {
+
+  const liveManager = data.managers.find((candidate) => managerKey(candidate.name) === managerKey(state.currentManager.name));
+  const weeklyOwner = data.managers.find((candidate) => {
+    if (managerKey(candidate.name) === managerKey(state.currentManager.name)) return false;
+    const pick = findWeekPick(candidate, state.activeWeek);
+    return String(pick && pick.team || '').trim().toLowerCase() === requestedTeamKey;
+  });
+  if (weeklyOwner) {
+    throw new QueueError(409, 'team_taken_this_week', `${team} was already picked by ${weeklyOwner.name} for Week ${state.activeWeek}. Choose another team.`);
+  }
+
+  const reusedByManager = (Array.isArray(liveManager && liveManager.picks) ? liveManager.picks : [])
+    .some((pick) => Number(pick && pick.week) !== state.activeWeek
+      && String(pick && pick.team || '').trim().toLowerCase() === requestedTeamKey);
+  if (reusedByManager) {
     throw new QueueError(409, 'team_already_used', `${state.currentManager.name} already used ${team} in another week.`);
+  }
+  if (!state.availableTeams.includes(team)) {
+    throw new QueueError(409, 'team_unavailable', `${team} is unavailable. Choose another team.`);
   }
 
   const updated = structuredClone(data);
@@ -189,6 +214,8 @@ export const applySubmission = (data, submission, now = new Date()) => {
   const submittedAt = (now instanceof Date ? now : new Date(now)).toISOString();
   pick.team = team;
   pick.result = null;
+  pick.margin = 0;
+  pick.manualResult = false;
   pick.submittedBy = 'public-pick-queue';
   pick.submittedAt = submittedAt;
   pick.lastUpdated = submittedAt;

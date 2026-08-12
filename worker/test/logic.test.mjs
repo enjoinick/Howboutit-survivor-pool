@@ -70,6 +70,28 @@ test('an accepted pick advances exactly one turn', () => {
   assert.equal(result.queue.entries[1].status, 'current');
 });
 
+test('an accepted pick clears stale result state from an empty slot', () => {
+  const pool = buildData();
+  pool.managers[0].picks[0] = {
+    week: 1,
+    team: '',
+    result: 'W',
+    margin: 14,
+    manualResult: true,
+    submittedAt: '2025-08-01T00:00:00.000Z'
+  };
+  const result = applySubmission(pool, {
+    manager: 'Weston',
+    week: 1,
+    team: 'Jacksonville Jaguars'
+  }, beforeDeadline);
+  const pick = result.data.managers[0].picks[0];
+  assert.equal(pick.result, null);
+  assert.equal(pick.margin, 0);
+  assert.equal(pick.manualResult, false);
+  assert.equal(pick.submittedAt, beforeDeadline.toISOString());
+});
+
 test('out-of-order submissions are rejected', () => {
   assert.throws(
     () => applySubmission(buildData(), { manager: 'Jordan', week: 1, team: 'Buffalo Bills' }, beforeDeadline),
@@ -83,6 +105,20 @@ test('a manager cannot reuse a team from an earlier week', () => {
   assert.throws(
     () => applySubmission(data, { manager: 'Weston', week: 1, team: 'Jacksonville Jaguars' }, beforeDeadline),
     (error) => error instanceof QueueError && error.code === 'team_already_used'
+  );
+});
+
+test('a team already picked by another manager is unavailable that week', () => {
+  const data = buildData();
+  data.managers[0].picks[0].team = 'Jacksonville Jaguars';
+  const state = deriveQueueState(data, beforeDeadline);
+  assert.equal(state.currentManager.name, 'Jordan');
+  assert.equal(state.availableTeams.includes('Jacksonville Jaguars'), false);
+  assert.throws(
+    () => applySubmission(data, { manager: 'Jordan', week: 1, team: 'Jacksonville Jaguars' }, beforeDeadline),
+    (error) => error instanceof QueueError
+      && error.code === 'team_taken_this_week'
+      && error.message.includes('Weston')
   );
 });
 

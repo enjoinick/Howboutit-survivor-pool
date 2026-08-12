@@ -22,7 +22,7 @@ Single-page React app (vanilla React via `<script>` in `index.html`) hosted on G
 - Picks lock at their explicit Eastern Time kickoff.
 - Audio assets lazy-load and a global mute preference persists in `localStorage`.
 - The admin validates data and previews changes before saving to the Gist.
-- The public queue shows only the next eligible manager, validates the active week and deadline, and advances after one accepted pick.
+- The public queue shows only the next eligible manager, validates the active week and deadline, prevents two managers from taking the same team in one week, and advances after one accepted pick.
 
 ## Data and Persistence
 
