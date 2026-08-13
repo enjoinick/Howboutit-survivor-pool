@@ -218,6 +218,7 @@
       const [managers, setManagers] = useState([]);
       const [games, setGames] = useState([]);
       const [gameResults, setGameResults] = useState({});
+      const [poolCompleted, setPoolCompleted] = useState(false);
       const [loading, setLoading] = useState(true);
       const [lastUpdated, setLastUpdated] = useState('');
       const [refreshing, setRefreshing] = useState(false);
@@ -229,6 +230,8 @@
       const jordanAudioRef = useRef(null); // easter egg audio ref for Jordan
       const westonAudioRef = useRef(null); // easter egg audio ref for Weston (DUUUVALL)
       const ryanAudioRef = useRef(null); // easter egg audio ref for Ryan (Opposite of Adults rmx)
+      const draftFanfareContextRef = useRef(null);
+      const draftFanfareNodesRef = useRef([]);
       // Global audio mute toggle (persisted)
       const [muted, setMuted] = useState(localStorage.getItem('mutedAudio') === 'true');
       // Breakdown toggles per manager
@@ -596,6 +599,7 @@
             }
             setManagers(data.managers || []);
             setGameResults(data.gameResults || {});
+            setPoolCompleted(data.pickQueue && data.pickQueue.completed === true);
             setLastUpdated(data.lastUpdated || '');
             setDataSource('gist');
             setLoading(false);
@@ -619,6 +623,7 @@
           }
           setManagers(data.managers || []);
           setGameResults(data.gameResults || {});
+          setPoolCompleted(data.pickQueue && data.pickQueue.completed === true);
           setLastUpdated(data.lastUpdated || '');
           setDataSource('repository');
           setLoading(false);
@@ -1075,6 +1080,76 @@
           try { if (ref && ref.current) ref.current.pause(); } catch (e) {}
         });
       };
+      const stopDraftPickFanfare = () => {
+        draftFanfareNodesRef.current.forEach(node => {
+          try { node.stop(); } catch (e) {}
+          try { node.disconnect(); } catch (e) {}
+        });
+        draftFanfareNodesRef.current = [];
+      };
+      // Original league-draft fanfare synthesized in the browser. No copyrighted audio asset is used.
+      const playDraftPickFanfare = async () => {
+        if (muted) return;
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        try {
+          pauseAllEggs();
+          stopDraftPickFanfare();
+          const context = draftFanfareContextRef.current || new AudioContextClass();
+          draftFanfareContextRef.current = context;
+          if (context.state === 'suspended') await context.resume();
+
+          const start = context.currentTime + 0.02;
+          const master = context.createGain();
+          master.gain.setValueAtTime(0.0001, start);
+          master.gain.exponentialRampToValueAtTime(0.24, start + 0.04);
+          master.gain.setValueAtTime(0.24, start + 1.28);
+          master.gain.exponentialRampToValueAtTime(0.0001, start + 1.72);
+          master.connect(context.destination);
+
+          const playBrassTone = (frequency, offset, duration, volume = 0.16) => {
+            const noteStart = start + offset;
+            const oscillator = context.createOscillator();
+            const warmth = context.createOscillator();
+            const filter = context.createBiquadFilter();
+            const envelope = context.createGain();
+
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(frequency, noteStart);
+            warmth.type = 'triangle';
+            warmth.frequency.setValueAtTime(frequency / 2, noteStart);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1050, noteStart);
+            filter.frequency.exponentialRampToValueAtTime(2100, noteStart + 0.06);
+            filter.Q.setValueAtTime(2.2, noteStart);
+            envelope.gain.setValueAtTime(0.0001, noteStart);
+            envelope.gain.exponentialRampToValueAtTime(volume, noteStart + 0.025);
+            envelope.gain.setValueAtTime(volume, noteStart + Math.max(0.04, duration - 0.1));
+            envelope.gain.exponentialRampToValueAtTime(0.0001, noteStart + duration);
+
+            oscillator.connect(filter);
+            warmth.connect(filter);
+            filter.connect(envelope);
+            envelope.connect(master);
+            oscillator.start(noteStart);
+            warmth.start(noteStart);
+            oscillator.stop(noteStart + duration + 0.02);
+            warmth.stop(noteStart + duration + 0.02);
+            draftFanfareNodesRef.current.push(oscillator, warmth);
+          };
+
+          // A quick rising call followed by a broad major chord gives it a stadium-draft feel.
+          playBrassTone(261.63, 0.00, 0.22, 0.13);
+          playBrassTone(329.63, 0.18, 0.22, 0.14);
+          playBrassTone(392.00, 0.36, 0.24, 0.15);
+          playBrassTone(523.25, 0.56, 0.32, 0.16);
+          [349.23, 440.00, 523.25, 698.46].forEach((frequency, index) => {
+            playBrassTone(frequency, 0.92, 0.78, index === 3 ? 0.12 : 0.09);
+          });
+        } catch (error) {
+          console.warn('Draft pick fanfare could not play:', error);
+        }
+      };
       // Persist mute preference locally
       useEffect(() => {
         localStorage.setItem('mutedAudio', muted ? 'true' : 'false');
@@ -1083,6 +1158,7 @@
       useEffect(() => {
         if (muted) {
           try { pauseAllEggs(); } catch (e) {}
+          try { stopDraftPickFanfare(); } catch (e) {}
         }
       }, [muted]);
       const handleCardClick = (mgr) => {
@@ -1542,9 +1618,11 @@
                       id="public-pick-team"
                       value={pickTeam}
                       onChange={(event) => {
-                        setPickTeam(event.target.value);
+                        const selectedTeam = event.target.value;
+                        setPickTeam(selectedTeam);
                         setPickError('');
                         setPickSuccess('');
+                        if (selectedTeam) playDraftPickFanfare();
                       }}
                       className="w-full p-3 rounded-lg bg-indigo-950 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-cyan-300"
                     >
@@ -1658,7 +1736,7 @@
               const derived = deriveElimination(mgr);
               const eliminationWeekComputed = derived.isEliminated ? derived.week : mgr.eliminationWeek;
               const isEliminated = derived.isEliminated;
-              const isWinner = mgr.draftOrder === 1;
+              const isWinner = poolCompleted && mgr.draftOrder === 1;
               const isOpen = expanded.has(mgr.name);
               const completedWeeks = calendar.completedWeeks || 0;
               const totalWeeks = calendar.totalWeeks || preseasonSchedule.length;

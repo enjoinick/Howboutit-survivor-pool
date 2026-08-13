@@ -158,7 +158,9 @@
     const computedManagers = syncComputedManagers(scored.managers, activeWeek);
     const canAdvance = errors.length === 0;
     const survivorCount = computedManagers.filter((manager) => manager.eliminated !== true).length;
-    const poolComplete = canAdvance && (activeWeek === TOTAL_WEEKS || survivorCount === 0);
+    // The survivor pool is over once one or zero managers remain, or after the
+    // final configured week. Only this explicit finalized state awards a trophy.
+    const poolComplete = canAdvance && (activeWeek === TOTAL_WEEKS || survivorCount <= 1);
     const nextWeek = canAdvance && !poolComplete ? activeWeek + 1 : activeWeek;
     const currentQueue = data && data.pickQueue ? data.pickQueue : {};
     const nextQueue = canAdvance
