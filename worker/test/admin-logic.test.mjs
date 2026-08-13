@@ -33,11 +33,15 @@ const finalGame = (homeTeam, homeScore, awayTeam, awayScore) => ({
 test('finalization imports finals, preserves valid manual overrides, and closes the next queue', () => {
   const pool = data([
     manager('Alice', 2, 'Buffalo Bills'),
-    manager('Bob', 1, 'Miami Dolphins', 'L', -3, { manualResult: true })
+    manager('Bob', 1, 'Miami Dolphins', 'L', -3, { manualResult: true }),
+    manager('Charlie', 3, 'New England Patriots')
   ]);
   const result = AdminLogic.finalizePoolWeek(
     pool,
-    [finalGame('Buffalo Bills', 20, 'New York Jets', 10)],
+    [
+      finalGame('Buffalo Bills', 20, 'New York Jets', 10),
+      finalGame('New England Patriots', 17, 'New York Giants', 13)
+    ],
     1,
     '2026-08-15T00:00:00.000Z'
   );
@@ -105,10 +109,15 @@ test('a manager eliminated in a prior week is not required to pick in the next w
   const eliminated = manager('Bob', 2, 'New York Jets', 'L', -7);
   eliminated.eliminated = true;
   eliminated.eliminationWeek = 1;
-  const pool = data([survivor, eliminated], 2);
+  const secondSurvivor = manager('Charlie', 3, 'Buffalo Bills', 'W', 3);
+  secondSurvivor.picks[1] = { week: 2, team: 'New England Patriots', result: null, margin: 0 };
+  const pool = data([survivor, eliminated, secondSurvivor], 2);
   const result = AdminLogic.finalizePoolWeek(
     pool,
-    [finalGame('Miami Dolphins', 24, 'Tampa Bay Buccaneers', 14)],
+    [
+      finalGame('Miami Dolphins', 24, 'Tampa Bay Buccaneers', 14),
+      finalGame('New England Patriots', 17, 'New York Giants', 13)
+    ],
     2,
     '2026-08-22T00:00:00.000Z'
   );
@@ -138,5 +147,28 @@ test('if everyone is eliminated in the same week, the pool closes without openin
   assert.equal(result.advanced, false);
   assert.equal(result.data.pickQueue.activeWeek, 1);
   assert.equal(result.data.pickQueue.enabled, false);
+  assert.equal(result.data.pickQueue.completed, true);
+});
+
+test('the pool finalizes as soon as one survivor remains', () => {
+  const pool = data([
+    manager('Alice', 1, 'Buffalo Bills'),
+    manager('Bob', 2, 'Miami Dolphins')
+  ]);
+  const result = AdminLogic.finalizePoolWeek(
+    pool,
+    [
+      finalGame('Buffalo Bills', 20, 'New York Jets', 10),
+      finalGame('Miami Dolphins', 7, 'Tampa Bay Buccaneers', 14)
+    ],
+    1,
+    '2026-08-15T00:00:00.000Z'
+  );
+
+  assert.equal(result.finalized, true);
+  assert.equal(result.survivorCount, 1);
+  assert.equal(result.poolComplete, true);
+  assert.equal(result.advanced, false);
+  assert.equal(result.data.pickQueue.activeWeek, 1);
   assert.equal(result.data.pickQueue.completed, true);
 });
